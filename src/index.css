@@ -1,0 +1,171 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Lora:ital,wght@0,400..700;1,400..700&family=IBM+Plex+Mono:ital,wght@0,100..700;1,100..700&display=swap');
+@import "tailwindcss";
+@import "tw-animate-css";
+@plugin "@tailwindcss/typography";
+@custom-variant dark (&:is(.dark *));
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   THE ONLY design-tokens file. This single file owns the whole app's visual
+   identity — colors, radius, fonts, shadows, light + dark. To re-theme the app
+   (e.g. "make it a Supabase theme"), edit the token VALUES in :root and .dark
+   below. Nothing else. No second config file, no component edits, no library
+   theme layer. Values are oklch(); the @theme inline block maps them to Tailwind
+   utilities (bg-primary, text-foreground, border-border, …) in this same file.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Design tokens — the ONLY place the app's visual identity is defined.
+   Re-theme the whole app by editing the values in :root (+ .dark). No other file. ── */
+:root {
+  --background: oklch(0.154 0.025 258);
+  --foreground: oklch(0.965 0.008 250);
+  --card: oklch(0.198 0.031 257);
+  --card-foreground: oklch(0.965 0.008 250);
+  --popover: oklch(0.205 0.034 257);
+  --popover-foreground: oklch(0.965 0.008 250);
+  --primary: oklch(0.746 0.126 218);
+  --primary-foreground: oklch(0.15 0.025 258);
+  --secondary: oklch(0.239 0.034 257);
+  --secondary-foreground: oklch(0.88 0.013 250);
+  --muted: oklch(0.214 0.03 257);
+  --muted-foreground: oklch(0.692 0.026 252);
+  --accent: oklch(0.264 0.041 254);
+  --accent-foreground: oklch(0.935 0.012 245);
+  --destructive: oklch(0.61 0.192 25);
+  --destructive-foreground: oklch(0.97 0.008 250);
+  --border: oklch(0.287 0.032 256);
+  --input: oklch(0.276 0.035 256);
+  --ring: oklch(0.746 0.126 218);
+  --chart-1: oklch(0.746 0.126 218);
+  --chart-2: oklch(0.77 0.15 150);
+  --chart-3: oklch(0.79 0.15 82);
+  --chart-4: oklch(0.69 0.17 45);
+  --chart-5: oklch(0.63 0.19 27);
+  --sidebar: oklch(0.136 0.023 258);
+  --sidebar-foreground: oklch(0.91 0.014 250);
+  --sidebar-primary: oklch(0.746 0.126 218);
+  --sidebar-primary-foreground: oklch(0.15 0.025 258);
+  --sidebar-accent: oklch(0.215 0.035 256);
+  --sidebar-accent-foreground: oklch(0.96 0.01 250);
+  --sidebar-border: oklch(0.27 0.029 256);
+  --sidebar-ring: oklch(0.746 0.126 218);
+
+  --radius: 0.625rem;
+  --font-sans: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-serif: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --shadow-sm: 0 1px 2px 0 oklch(0.08 0.02 258 / 0.28);
+  --shadow-md: 0 3px 12px -4px oklch(0.08 0.02 258 / 0.35);
+  --shadow-lg: 0 8px 24px -8px oklch(0.08 0.02 258 / 0.45);
+}
+
+.dark {
+  --background: oklch(0.2077 0.0398 265.75);
+  --foreground: oklch(0.8717 0.0093 258.34);
+  --card: oklch(0.2795 0.0368 260.03);
+  --card-foreground: oklch(0.8717 0.0093 258.34);
+  --popover: oklch(0.2795 0.0368 260.03);
+  --popover-foreground: oklch(0.8717 0.0093 258.34);
+  --primary: oklch(0.9234 0 0);
+  --primary-foreground: oklch(0.2077 0.0398 265.75);
+  --secondary: oklch(0.3351 0.0331 260.91);
+  --secondary-foreground: oklch(0.7118 0.0129 286.07);
+  --muted: oklch(0.2795 0.0368 260.03);
+  --muted-foreground: oklch(0.551 0.0234 264.36);
+  --accent: oklch(0.3729 0.0306 259.73);
+  --accent-foreground: oklch(0.7118 0.0129 286.07);
+  --destructive: oklch(0.6368 0.2078 25.33);
+  --destructive-foreground: oklch(0.2077 0.0398 265.75);
+  --border: oklch(0.4461 0.0263 256.8);
+  --input: oklch(0.4461 0.0263 256.8);
+  --ring: oklch(0.9234 0 0);
+  --chart-1: oklch(0.6733 0.1828 11.36);
+  --chart-2: oklch(0.7523 0.1554 51.7);
+  --chart-3: oklch(0.8852 0.1533 93.36);
+  --chart-4: oklch(0.7573 0.1432 158.87);
+  --chart-5: oklch(0.6418 0.1385 299.39);
+  --sidebar: oklch(0.2795 0.0368 260.03);
+  --sidebar-foreground: oklch(0.8717 0.0093 258.34);
+  --sidebar-primary: oklch(0.9234 0 0);
+  --sidebar-primary-foreground: oklch(0.2077 0.0398 265.75);
+  --sidebar-accent: oklch(0.3729 0.0306 259.73);
+  --sidebar-accent-foreground: oklch(0.7118 0.0129 286.07);
+  --sidebar-border: oklch(0.4461 0.0263 256.8);
+  --sidebar-ring: oklch(0.9234 0 0);
+}
+
+/* ── Token → utility mapping (Tailwind v4). Same file as the values above. ── */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --font-sans: var(--font-sans);
+  --font-serif: var(--font-serif);
+  --font-mono: var(--font-mono);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+}
+
+@layer base {
+  * { border-color: var(--color-border); }
+
+  /* Full viewport chain so AppShell / Sidebar h-full + flex-1 work */
+  html { height: 100%; }
+  #root {
+    min-height: 100%;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+  }
+  body {
+    min-height: 100%;
+    min-height: 100dvh;
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+@layer utilities {
+  .animate-fade-in { animation: fade-in 0.3s ease-in-out; }
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+}
