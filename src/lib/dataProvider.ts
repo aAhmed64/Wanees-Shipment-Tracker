@@ -10,13 +10,33 @@
  */
 
 export type RiskLevel = 'SAFE' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
-export type DeviceStatus = 'ONLINE' | 'OFFLINE';
+export type DeviceStatus = 'ONLINE' | 'OFFLINE' | 'SLEEP' | 'WARNING' | 'ERROR';
 export type DataSource = 'real' | 'simulation';
+
+export interface ActuatorState {
+  ledGreen: boolean;
+  ledYellow: boolean;
+  ledRed: boolean;
+  buzzer: boolean;
+  stateSummary: string;
+}
+
+export interface RiskAssessment {
+  level: RiskLevel;
+  score: number; // 0 - 100
+  factors: string[];
+}
+
+export interface GpsLocation {
+  latitude: number;
+  longitude: number;
+  altitude?: number;
+  speed?: number;
+}
 
 /**
  * Normalized Wanees Device Data Model
- * Unified structure consumed by the dashboard regardless of whether
- * telemetry originated from physical hardware or the simulation engine.
+ * Extensible data model consumed across the entire dashboard.
  */
 export interface NormalizedDeviceData {
   deviceId: string;
@@ -27,15 +47,20 @@ export interface NormalizedDeviceData {
   timestamp: string;
   source: DataSource;
   battery?: number;
+  signalStrength?: number;
+  location?: GpsLocation;
+  latitude?: number;
+  longitude?: number;
+  sensors?: Record<string, number | boolean | string>;
+  riskAssessment?: RiskAssessment;
+  actuators?: ActuatorState;
   shipmentId?: string;
   cargo?: string;
   origin?: string;
   destination?: string;
   firmware?: string;
   lastSeen?: string;
-  latitude?: number;
-  longitude?: number;
-  signalStrength?: number;
+  metadata?: Record<string, any>;
 }
 
 export interface HistoricalReading {
@@ -46,7 +71,6 @@ export interface HistoricalReading {
 
 /**
  * Modular Risk Classification
- * Preserves Wanees threshold logic:
  * - SAFE: Temp < 29°C and Humidity < 71%
  * - MEDIUM: Temp 29–31.9°C or Humidity 71–75%
  * - HIGH: Temp 32–34.9°C or Humidity 76–79%
@@ -59,6 +83,112 @@ export function calculateRisk(temperature: number, humidity: number): RiskLevel 
   return 'SAFE';
 }
 
+export function computeRiskAssessment(
+  temperature: number,
+  humidity: number,
+  overrideRisk?: string
+): RiskAssessment {
+  if (overrideRisk && ['SAFE', 'MEDIUM', 'HIGH', 'CRITICAL'].includes(overrideRisk.toUpperCase())) {
+    const level = overrideRisk.toUpperCase() as RiskLevel;
+    const scores: Record<RiskLevel, number> = { SAFE: 10, MEDIUM: 45, HIGH: 75, CRITICAL: 95 };
+    return {
+      level,
+      score: scores[level],
+      factors: [`Manual risk override set to ${level}`],
+    };
+  }
+
+  const factors: string[] = [];
+  let score = 0;
+
+  if (temperature >= 35) {
+    factors.push(`Critical temperature threshold exceeded: ${temperature.toFixed(1)}°C (limit: < 29°C)`);
+    score += 55;
+  } else if (temperature >= 32) {
+    factors.push(`Elevated temperature detected: ${temperature.toFixed(1)}°C`);
+    score += 40;
+  } else if (temperature >= 29) {
+    factors.push(`Moderate temperature warning: ${temperature.toFixed(1)}°C`);
+    score += 25;
+  } else {
+    factors.push(`Temperature nominal: ${temperature.toFixed(1)}°C`);
+    score += 5;
+  }
+
+  if (humidity >= 80) {
+    factors.push(`Critical humidity threshold exceeded: ${humidity}% (limit: < 71%)`);
+    score += 45;
+  } else if (humidity >= 76) {
+    factors.push(`High humidity condition: ${humidity}%`);
+    score += 35;
+  } else if (humidity >= 71) {
+    factors.push(`Moderate humidity advisory: ${humidity}%`);
+    score += 20;
+  } else {
+    factors.push(`Humidity nominal: ${humidity}%`);
+    score += 5;
+  }
+
+  let level: RiskLevel = 'SAFE';
+  if (temperature >= 35 || humidity >= 80) level = 'CRITICAL';
+  else if (temperature >= 32 || humidity >= 76) level = 'HIGH';
+  else if (temperature >= 29 || humidity >= 71) level = 'MEDIUM';
+
+  return {
+    level,
+    score: Math.min(100, score),
+    factors,
+  };
+}
+
+export function computeActuators(risk: RiskLevel, status: DeviceStatus): ActuatorState {
+  if (status === 'OFFLINE') {
+    return {
+      ledGreen: false,
+      ledYellow: false,
+      ledRed: false,
+      buzzer: false,
+      stateSummary: 'Device offline - all actuators standby',
+    };
+  }
+
+  switch (risk) {
+    case 'CRITICAL':
+      return {
+        ledGreen: false,
+        ledYellow: false,
+        ledRed: true,
+        buzzer: true,
+        stateSummary: 'CRITICAL ALERT: Red LED Active & Alarm Buzzer Sounding',
+      };
+    case 'HIGH':
+      return {
+        ledGreen: false,
+        ledYellow: false,
+        ledRed: true,
+        buzzer: false,
+        stateSummary: 'HIGH RISK: Red Warning LED Active (Buzzer Silent)',
+      };
+    case 'MEDIUM':
+      return {
+        ledGreen: false,
+        ledYellow: true,
+        ledRed: false,
+        buzzer: false,
+        stateSummary: 'MEDIUM RISK: Yellow Advisory LED Active',
+      };
+    case 'SAFE':
+    default:
+      return {
+        ledGreen: true,
+        ledYellow: false,
+        ledRed: false,
+        buzzer: false,
+        stateSummary: 'SAFE: Green LED Active (Nominal Environmental Range)',
+      };
+  }
+}
+
 /**
  * Common Data Provider Interface
  */
@@ -67,7 +197,7 @@ export interface WaneesDataProvider {
   getAllDevices(): Promise<NormalizedDeviceData[]>;
 }
 
-// Keys for persistence
+// Storage keys
 const REAL_STORAGE_KEY = 'wanees_real_device_telemetry';
 const SIM_STORAGE_KEY = 'wanees_simulation_overrides';
 
@@ -76,23 +206,7 @@ const SIM_STORAGE_KEY = 'wanees_simulation_overrides';
  * Communicates with the physical ESP32 via HTTP API (/api/device/data).
  */
 export class RealDeviceProvider implements WaneesDataProvider {
-  private lastKnownData: NormalizedDeviceData = {
-    deviceId: 'WN-001',
-    temperature: 27.4,
-    humidity: 53,
-    risk: 'SAFE',
-    deviceStatus: 'ONLINE',
-    timestamp: new Date().toISOString(),
-    source: 'real',
-    battery: 98,
-    shipmentId: 'WN-001',
-    cargo: 'Fresh Mango Export (Physical ESP32)',
-    origin: 'Cairo, Egypt',
-    destination: 'Rotterdam, Netherlands',
-    firmware: 'v1.4.2-esp32',
-    lastSeen: 'Just now',
-  };
-
+  private lastKnownData: NormalizedDeviceData;
   private history: HistoricalReading[] = [
     { time: '00:00', temperature: 24.2, humidity: 50 },
     { time: '04:00', temperature: 25.0, humidity: 51 },
@@ -103,6 +217,30 @@ export class RealDeviceProvider implements WaneesDataProvider {
   ];
 
   constructor() {
+    const baseAssessment = computeRiskAssessment(27.4, 53);
+    this.lastKnownData = {
+      deviceId: 'WN-001',
+      temperature: 27.4,
+      humidity: 53,
+      risk: 'SAFE',
+      deviceStatus: 'ONLINE',
+      timestamp: new Date().toISOString(),
+      source: 'real',
+      battery: 98,
+      signalStrength: -65,
+      location: { latitude: 30.0444, longitude: 31.2357 },
+      latitude: 30.0444,
+      longitude: 31.2357,
+      riskAssessment: baseAssessment,
+      actuators: computeActuators('SAFE', 'ONLINE'),
+      shipmentId: 'WN-001',
+      cargo: 'Fresh Mango Export (Physical ESP32)',
+      origin: 'Cairo, Egypt',
+      destination: 'Rotterdam, Netherlands',
+      firmware: 'v1.4.2-esp32',
+      lastSeen: 'Just now',
+    };
+
     if (typeof window !== 'undefined') {
       try {
         const cached = localStorage.getItem(REAL_STORAGE_KEY);
@@ -127,16 +265,28 @@ export class RealDeviceProvider implements WaneesDataProvider {
           const json = await res.json();
           if (json.success && json.data) {
             const remote = json.data;
+            const temp = remote.temperature ?? this.lastKnownData.temperature;
+            const hum = remote.humidity ?? this.lastKnownData.humidity;
+            const risk = remote.risk || calculateRisk(temp, hum);
+            const status = remote.deviceStatus || 'ONLINE';
+
             const updated: NormalizedDeviceData = {
               ...this.lastKnownData,
               deviceId: remote.deviceId || deviceId,
-              temperature: remote.temperature,
-              humidity: remote.humidity,
-              risk: remote.risk || calculateRisk(remote.temperature, remote.humidity),
-              deviceStatus: remote.deviceStatus || 'ONLINE',
+              temperature: temp,
+              humidity: hum,
+              risk,
+              deviceStatus: status,
               timestamp: remote.timestamp || new Date().toISOString(),
               source: 'real',
               battery: remote.battery ?? this.lastKnownData.battery,
+              signalStrength: remote.signalStrength ?? this.lastKnownData.signalStrength,
+              location: remote.location ?? this.lastKnownData.location,
+              latitude: remote.latitude ?? remote.location?.latitude ?? this.lastKnownData.latitude,
+              longitude: remote.longitude ?? remote.location?.longitude ?? this.lastKnownData.longitude,
+              sensors: remote.sensors ?? this.lastKnownData.sensors,
+              riskAssessment: remote.riskAssessment ?? computeRiskAssessment(temp, hum, risk),
+              actuators: remote.actuators ?? computeActuators(risk, status),
               lastSeen: 'Just now',
             };
 
@@ -154,7 +304,7 @@ export class RealDeviceProvider implements WaneesDataProvider {
         }
       }
     } catch {
-      // Offline fallback: continue serving cached state
+      // Offline fallback
     }
     return this.lastKnownData;
   }
@@ -171,19 +321,33 @@ export class RealDeviceProvider implements WaneesDataProvider {
     return [dev];
   }
 
-  /**
-   * Helper for development/testing: Post test telemetry directly to the API
-   */
-  async sendTestTelemetry(temperature: number, humidity: number, riskOverride?: RiskLevel): Promise<NormalizedDeviceData> {
+  async sendTestTelemetry(
+    temperature: number,
+    humidity: number,
+    riskOverride?: RiskLevel,
+    extraFields?: Partial<NormalizedDeviceData>
+  ): Promise<NormalizedDeviceData> {
     const risk = riskOverride || calculateRisk(temperature, humidity);
+    const riskAssessment = computeRiskAssessment(temperature, humidity, risk);
+    const deviceStatus: DeviceStatus = extraFields?.deviceStatus || 'ONLINE';
+    const actuators = computeActuators(risk, deviceStatus);
+
     const payload = {
       deviceId: 'WN-001',
       temperature,
       humidity,
       risk,
-      deviceStatus: 'ONLINE' as const,
+      deviceStatus,
       timestamp: new Date().toISOString(),
       source: 'real' as const,
+      battery: extraFields?.battery ?? this.lastKnownData.battery ?? 98,
+      signalStrength: extraFields?.signalStrength ?? this.lastKnownData.signalStrength ?? -65,
+      location: extraFields?.location ?? this.lastKnownData.location,
+      latitude: extraFields?.latitude ?? this.lastKnownData.latitude,
+      longitude: extraFields?.longitude ?? this.lastKnownData.longitude,
+      sensors: extraFields?.sensors,
+      riskAssessment,
+      actuators,
     };
 
     try {
@@ -215,10 +379,6 @@ export class RealDeviceProvider implements WaneesDataProvider {
   }
 
   private recordHistory(temperature: number, humidity: number) {
-    const now = new Date();
-    const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    
-    // Update or append
     if (this.history.length >= 8) {
       this.history.shift();
     }
@@ -245,6 +405,12 @@ export class SimulationProvider implements WaneesDataProvider {
       timestamp: new Date().toISOString(),
       source: 'simulation',
       battery: 84,
+      signalStrength: -72,
+      location: { latitude: 21.5433, longitude: 39.1728 },
+      latitude: 21.5433,
+      longitude: 39.1728,
+      riskAssessment: computeRiskAssessment(30.8, 75),
+      actuators: computeActuators('MEDIUM', 'ONLINE'),
       shipmentId: 'WN-002',
       cargo: 'Premium Mango Export',
       origin: 'Cairo, Egypt',
@@ -261,6 +427,12 @@ export class SimulationProvider implements WaneesDataProvider {
       timestamp: new Date().toISOString(),
       source: 'simulation',
       battery: 76,
+      signalStrength: -80,
+      location: { latitude: 25.2048, longitude: 55.2708 },
+      latitude: 25.2048,
+      longitude: 55.2708,
+      riskAssessment: computeRiskAssessment(35.8, 82),
+      actuators: computeActuators('CRITICAL', 'ONLINE'),
       shipmentId: 'WN-003',
       cargo: 'Fresh Agricultural Cargo',
       origin: 'Cairo, Egypt',
@@ -277,6 +449,12 @@ export class SimulationProvider implements WaneesDataProvider {
       timestamp: new Date().toISOString(),
       source: 'simulation',
       battery: 91,
+      signalStrength: -68,
+      location: { latitude: 31.9454, longitude: 35.9284 },
+      latitude: 31.9454,
+      longitude: 35.9284,
+      riskAssessment: computeRiskAssessment(24.5, 62),
+      actuators: computeActuators('SAFE', 'ONLINE'),
       shipmentId: 'WN-004',
       cargo: 'Pharmaceutical Vaccines (Cold Chain)',
       origin: 'Alexandria, Egypt',
@@ -326,6 +504,8 @@ export class SimulationProvider implements WaneesDataProvider {
       risk: activeRisk,
       temperature: profile.temperature,
       humidity: profile.humidity,
+      riskAssessment: computeRiskAssessment(profile.temperature, profile.humidity),
+      actuators: computeActuators(activeRisk, base.deviceStatus),
       source: 'simulation',
       lastSeen: 'Just now',
     };
@@ -342,6 +522,8 @@ export class SimulationProvider implements WaneesDataProvider {
         risk: activeRisk,
         temperature: profile.temperature,
         humidity: profile.humidity,
+        riskAssessment: computeRiskAssessment(profile.temperature, profile.humidity),
+        actuators: computeActuators(activeRisk, base.deviceStatus),
         source: 'simulation',
         lastSeen: 'Just now',
       };
@@ -351,7 +533,6 @@ export class SimulationProvider implements WaneesDataProvider {
 
 /**
  * Unified Wanees Data Service
- * Dashboard queries this service, which abstracts both real and simulated feeds.
  */
 class WaneesDataServiceManager {
   public realProvider = new RealDeviceProvider();
@@ -425,8 +606,8 @@ class WaneesDataServiceManager {
     this.notify();
   }
 
-  async triggerTestTelemetry(temp: number, hum: number, risk?: RiskLevel) {
-    const res = await this.realProvider.sendTestTelemetry(temp, hum, risk);
+  async triggerTestTelemetry(temp: number, hum: number, risk?: RiskLevel, extras?: Partial<NormalizedDeviceData>) {
+    const res = await this.realProvider.sendTestTelemetry(temp, hum, risk, extras);
     this.notify();
     return res;
   }

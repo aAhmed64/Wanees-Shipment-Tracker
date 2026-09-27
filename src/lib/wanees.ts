@@ -1,10 +1,34 @@
-import { waneesDataService, calculateRisk, type NormalizedDeviceData, type DataSource } from './dataProvider'
+import {
+  waneesDataService,
+  calculateRisk,
+  computeRiskAssessment,
+  computeActuators,
+  type NormalizedDeviceData,
+  type DataSource,
+  type ActuatorState,
+  type RiskAssessment,
+  type GpsLocation,
+} from './dataProvider'
+
+export type { DataSource, ActuatorState, RiskAssessment, GpsLocation, NormalizedDeviceData }
+export { calculateRisk, computeRiskAssessment, computeActuators }
 
 export type RiskLevel = 'SAFE' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
-export type DeviceStatus = 'ONLINE' | 'OFFLINE'
+export type DeviceStatus = 'ONLINE' | 'OFFLINE' | 'SLEEP' | 'WARNING' | 'ERROR'
 export type ShipmentStatus = 'IN_TRANSIT' | 'COMPLETED'
 export type User = { name: string; company: string; email: string }
-export type SensorReading = { temperature: number; humidity: number; risk: RiskLevel; updated: string }
+
+export type SensorReading = {
+  temperature: number
+  humidity: number
+  risk: RiskLevel
+  updated: string
+  battery?: number
+  signalStrength?: number
+  actuators?: ActuatorState
+  riskAssessment?: RiskAssessment
+}
+
 export type Shipment = {
   id: string
   cargo: string
@@ -14,7 +38,10 @@ export type Shipment = {
   status: ShipmentStatus
   reading: SensorReading
   source: DataSource
+  actuators?: ActuatorState
+  riskAssessment?: RiskAssessment
 }
+
 export type Device = {
   id: string
   status: DeviceStatus
@@ -23,7 +50,10 @@ export type Device = {
   lastSeen: string
   source: DataSource
   shipmentId?: string
+  actuators?: ActuatorState
+  riskAssessment?: RiskAssessment
 }
+
 export type Alert = {
   id: string
   shipmentId: string
@@ -51,8 +81,19 @@ export const defaultShipments: Shipment[] = [
     destination: 'Rotterdam, Netherlands',
     deviceId: 'Wanees-001',
     status: 'IN_TRANSIT',
-    reading: { temperature: 27.4, humidity: 53, risk: 'SAFE', updated: 'Just now' },
+    reading: {
+      temperature: 27.4,
+      humidity: 53,
+      risk: 'SAFE',
+      updated: 'Just now',
+      battery: 98,
+      signalStrength: -65,
+      actuators: computeActuators('SAFE', 'ONLINE'),
+      riskAssessment: computeRiskAssessment(27.4, 53),
+    },
     source: 'real',
+    actuators: computeActuators('SAFE', 'ONLINE'),
+    riskAssessment: computeRiskAssessment(27.4, 53),
   },
   {
     id: 'WN-002',
@@ -61,8 +102,19 @@ export const defaultShipments: Shipment[] = [
     destination: 'Jeddah, Saudi Arabia',
     deviceId: 'Wanees-002',
     status: 'IN_TRANSIT',
-    reading: { temperature: 30.8, humidity: 75, risk: 'MEDIUM', updated: '10 sec ago' },
+    reading: {
+      temperature: 30.8,
+      humidity: 75,
+      risk: 'MEDIUM',
+      updated: '10 sec ago',
+      battery: 84,
+      signalStrength: -72,
+      actuators: computeActuators('MEDIUM', 'ONLINE'),
+      riskAssessment: computeRiskAssessment(30.8, 75),
+    },
     source: 'simulation',
+    actuators: computeActuators('MEDIUM', 'ONLINE'),
+    riskAssessment: computeRiskAssessment(30.8, 75),
   },
   {
     id: 'WN-003',
@@ -71,8 +123,19 @@ export const defaultShipments: Shipment[] = [
     destination: 'Dubai, UAE',
     deviceId: 'Wanees-003',
     status: 'IN_TRANSIT',
-    reading: { temperature: 35.8, humidity: 82, risk: 'CRITICAL', updated: '5 sec ago' },
+    reading: {
+      temperature: 35.8,
+      humidity: 82,
+      risk: 'CRITICAL',
+      updated: '5 sec ago',
+      battery: 76,
+      signalStrength: -80,
+      actuators: computeActuators('CRITICAL', 'ONLINE'),
+      riskAssessment: computeRiskAssessment(35.8, 82),
+    },
     source: 'simulation',
+    actuators: computeActuators('CRITICAL', 'ONLINE'),
+    riskAssessment: computeRiskAssessment(35.8, 82),
   },
   {
     id: 'WN-004',
@@ -81,26 +144,68 @@ export const defaultShipments: Shipment[] = [
     destination: 'Amman, Jordan',
     deviceId: 'Wanees-004',
     status: 'IN_TRANSIT',
-    reading: { temperature: 24.5, humidity: 62, risk: 'SAFE', updated: '12 sec ago' },
+    reading: {
+      temperature: 24.5,
+      humidity: 62,
+      risk: 'SAFE',
+      updated: '12 sec ago',
+      battery: 91,
+      signalStrength: -68,
+      actuators: computeActuators('SAFE', 'ONLINE'),
+      riskAssessment: computeRiskAssessment(24.5, 62),
+    },
     source: 'simulation',
+    actuators: computeActuators('SAFE', 'ONLINE'),
+    riskAssessment: computeRiskAssessment(24.5, 62),
   },
 ]
 
 export const devices: Device[] = [
-  { id: 'Wanees-001', status: 'ONLINE', battery: 98, firmware: 'v1.4.2-esp32', lastSeen: 'Just now', source: 'real', shipmentId: 'WN-001' },
-  { id: 'Wanees-002', status: 'ONLINE', battery: 84, firmware: 'v1.4.2-sim', lastSeen: '10 seconds ago', source: 'simulation', shipmentId: 'WN-002' },
-  { id: 'Wanees-003', status: 'ONLINE', battery: 76, firmware: 'v1.4.1-sim', lastSeen: '5 seconds ago', source: 'simulation', shipmentId: 'WN-003' },
-  { id: 'Wanees-004', status: 'ONLINE', battery: 91, firmware: 'v1.4.2-sim', lastSeen: '12 seconds ago', source: 'simulation', shipmentId: 'WN-004' },
+  {
+    id: 'Wanees-001',
+    status: 'ONLINE',
+    battery: 98,
+    firmware: 'v1.4.2-esp32',
+    lastSeen: 'Just now',
+    source: 'real',
+    shipmentId: 'WN-001',
+    actuators: computeActuators('SAFE', 'ONLINE'),
+    riskAssessment: computeRiskAssessment(27.4, 53),
+  },
+  {
+    id: 'Wanees-002',
+    status: 'ONLINE',
+    battery: 84,
+    firmware: 'v1.4.2-sim',
+    lastSeen: '10 seconds ago',
+    source: 'simulation',
+    shipmentId: 'WN-002',
+    actuators: computeActuators('MEDIUM', 'ONLINE'),
+    riskAssessment: computeRiskAssessment(30.8, 75),
+  },
+  {
+    id: 'Wanees-003',
+    status: 'ONLINE',
+    battery: 76,
+    firmware: 'v1.4.1-sim',
+    lastSeen: '5 seconds ago',
+    source: 'simulation',
+    shipmentId: 'WN-003',
+    actuators: computeActuators('CRITICAL', 'ONLINE'),
+    riskAssessment: computeRiskAssessment(35.8, 82),
+  },
+  {
+    id: 'Wanees-004',
+    status: 'ONLINE',
+    battery: 91,
+    firmware: 'v1.4.2-sim',
+    lastSeen: '12 seconds ago',
+    source: 'simulation',
+    shipmentId: 'WN-004',
+    actuators: computeActuators('SAFE', 'ONLINE'),
+    riskAssessment: computeRiskAssessment(24.5, 62),
+  },
 ]
-
-export const datastreamMapping = {
-  temperature: 'V0',
-  humidity: 'V1',
-  risk: 'V2',
-  battery: 'V3',
-  latitude: 'V4',
-  longitude: 'V5',
-}
 
 export const authService = {
   currentUser: (): User | null =>
@@ -132,36 +237,11 @@ export const authService = {
 }
 
 /**
- * Optional legacy Blynk adapter
- * Preserved for backwards compatibility, completely optional.
- */
-export const blynkService = {
-  async getDeviceCurrentData(deviceId: string) {
-    return shipmentService.forDevice(deviceId)?.reading ?? null
-  },
-  async getTemperature(deviceId: string) {
-    return (await this.getDeviceCurrentData(deviceId))?.temperature ?? null
-  },
-  async getHumidity(deviceId: string) {
-    return (await this.getDeviceCurrentData(deviceId))?.humidity ?? null
-  },
-  async getRisk(deviceId: string) {
-    return (await this.getDeviceCurrentData(deviceId))?.risk ?? null
-  },
-  async getHistoricalData(deviceId: string) {
-    const shipment = shipmentService.forDevice(deviceId)
-    return shipment ? mockHistory(shipment.reading) : []
-  },
-}
-
-/**
  * Unified Shipment Service
  * Integrates RealDeviceProvider (for physical WN-001) and SimulationProvider (for WN-002, WN-003, WN-004)
  */
 export const shipmentService = {
   list(): Shipment[] {
-    const realData = waneesDataService.realProvider.getDevice('WN-001')
-    // Synchronous read of latest known states
     const realSnapshot = (waneesDataService.realProvider as any).lastKnownData as NormalizedDeviceData
     const simOverrides = (waneesDataService.simProvider as any).getOverrides?.() || {}
     const simProfiles = (waneesDataService.simProvider as any).simulationProfiles || {}
@@ -171,6 +251,10 @@ export const shipmentService = {
         const temp = realSnapshot?.temperature ?? item.reading.temperature
         const hum = realSnapshot?.humidity ?? item.reading.humidity
         const risk = realSnapshot?.risk ?? calculateRisk(temp, hum)
+        const status = realSnapshot?.deviceStatus ?? 'ONLINE'
+        const actuators = realSnapshot?.actuators ?? computeActuators(risk, status)
+        const riskAssessment = realSnapshot?.riskAssessment ?? computeRiskAssessment(temp, hum, risk)
+
         return {
           ...item,
           reading: {
@@ -178,8 +262,14 @@ export const shipmentService = {
             humidity: hum,
             risk,
             updated: 'Live from ESP32',
+            battery: realSnapshot?.battery ?? 98,
+            signalStrength: realSnapshot?.signalStrength ?? -65,
+            actuators,
+            riskAssessment,
           },
           source: 'real' as const,
+          actuators,
+          riskAssessment,
         }
       }
 
@@ -187,6 +277,8 @@ export const shipmentService = {
       const overrideRisk = simOverrides[item.id] as RiskLevel | undefined
       if (overrideRisk && simProfiles[overrideRisk]) {
         const p = simProfiles[overrideRisk]
+        const actuators = computeActuators(overrideRisk, 'ONLINE')
+        const riskAssessment = computeRiskAssessment(p.temperature, p.humidity, overrideRisk)
         return {
           ...item,
           reading: {
@@ -194,8 +286,14 @@ export const shipmentService = {
             humidity: p.humidity,
             risk: overrideRisk,
             updated: 'Just now (simulated)',
+            battery: item.reading.battery ?? 85,
+            signalStrength: item.reading.signalStrength ?? -70,
+            actuators,
+            riskAssessment,
           },
           source: 'simulation' as const,
+          actuators,
+          riskAssessment,
         }
       }
 
@@ -224,12 +322,16 @@ export const deviceService = {
     const realSnapshot = (waneesDataService.realProvider as any).lastKnownData as NormalizedDeviceData
     return devices.map(device => {
       if (device.id === 'Wanees-001' || device.shipmentId === 'WN-001') {
+        const status = realSnapshot?.deviceStatus || 'ONLINE'
+        const risk = realSnapshot?.risk || 'SAFE'
         return {
           ...device,
-          status: realSnapshot?.deviceStatus || 'ONLINE',
+          status,
           battery: realSnapshot?.battery ?? 98,
           lastSeen: realSnapshot?.lastSeen || 'Just now',
           source: 'real' as const,
+          actuators: realSnapshot?.actuators ?? computeActuators(risk, status),
+          riskAssessment: realSnapshot?.riskAssessment,
         }
       }
       return device
@@ -254,10 +356,10 @@ export const alertService = {
           level: risk,
           message:
             risk === 'CRITICAL'
-              ? `Temperature (${shipment.reading.temperature.toFixed(1)}°C) exceeded safe threshold on ${shipment.source === 'real' ? 'Physical ESP32' : 'Simulated Unit'}.`
+              ? `Critical threshold exceeded (${shipment.reading.temperature.toFixed(1)}°C / ${shipment.reading.humidity}%). Buzzer triggered on ${shipment.source === 'real' ? 'Physical ESP32' : 'Simulated Unit'}.`
               : risk === 'HIGH'
-              ? `Environmental conditions approaching critical range on ${shipment.id}.`
-              : `Humidity (${shipment.reading.humidity}%) elevated above nominal range.`,
+              ? `High environmental stress warning on ${shipment.id} (${shipment.reading.temperature.toFixed(1)}°C).`
+              : `Moderate conditions advisory on ${shipment.id} (${shipment.reading.humidity}% RH).`,
           time: shipment.source === 'real' ? 'Just now' : shipment.id === 'WN-003' ? '2 minutes ago' : '18 minutes ago',
           active: true,
           source: shipment.source,
@@ -265,12 +367,11 @@ export const alertService = {
       }
     })
 
-    // Also include a resolved alert for demonstration
     dynamic.push({
       id: 'alert-hist-01',
       shipmentId: 'WN-001',
       level: 'RESOLVED',
-      message: 'Physical ESP32 environmental baseline calibrated and verified.',
+      message: 'Physical ESP32 baseline telemetry verified and online.',
       time: '45 minutes ago',
       active: false,
       source: 'real',
@@ -281,7 +382,6 @@ export const alertService = {
 }
 
 export function mockHistory(reading: SensorReading | Omit<SensorReading, 'updated'>) {
-  // If it's the real device, we can blend with RealDeviceProvider's history
   const realHistory = waneesDataService.realProvider.getHistory()
   if (realHistory && realHistory.length > 0) {
     return realHistory.map((pt, idx) => {

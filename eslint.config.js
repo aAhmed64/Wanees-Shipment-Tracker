@@ -12,7 +12,6 @@ export default tseslint.config(
       'src/routeTree.gen.ts',
       'node_modules',
       'scripts',
-      'blink-tagger.plugin.mjs',
     ],
   },
   {
