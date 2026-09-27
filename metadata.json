@@ -1,0 +1,8 @@
+{
+  "name": "Wanees Shipment Tracker",
+  "description": "Smart shipment monitoring dashboard to track environmental conditions, detect cargo risks, and monitor connected ESP32 sensor units.",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

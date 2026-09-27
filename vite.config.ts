@@ -196,10 +196,118 @@ function blinkRouteTreeHealth() {
   };
 }
 
+function waneesApiPlugin() {
+  const store = new Map<string, any>();
+  store.set('WN-001', {
+    deviceId: 'WN-001',
+    temperature: 27.4,
+    humidity: 53,
+    risk: 'SAFE',
+    deviceStatus: 'ONLINE',
+    battery: 98,
+    timestamp: new Date().toISOString(),
+    source: 'real',
+  });
+
+  return {
+    name: 'wanees-api-middleware',
+    configureServer(server: import('vite').ViteDevServer) {
+      server.middlewares.use((req, res, next) => {
+        if (!req.url?.startsWith('/api/device/data')) {
+          return next();
+        }
+
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+        if (req.method === 'OPTIONS') {
+          res.statusCode = 200;
+          return res.end();
+        }
+
+        if (req.method === 'GET') {
+          const urlObj = new URL(req.url, 'http://localhost:3000');
+          const deviceId = urlObj.searchParams.get('deviceId');
+          res.setHeader('Content-Type', 'application/json');
+          if (deviceId) {
+            const item = store.get(deviceId) || store.get('WN-001');
+            res.statusCode = 200;
+            return res.end(JSON.stringify({ success: true, data: item || null }));
+          }
+          const all = Array.from(store.values());
+          res.statusCode = 200;
+          return res.end(JSON.stringify({ success: true, count: all.length, data: all }));
+        }
+
+        if (req.method === 'POST') {
+          let bodyStr = '';
+          req.on('data', chunk => {
+            bodyStr += chunk;
+          });
+          req.on('end', () => {
+            try {
+              const body = JSON.parse(bodyStr || '{}');
+              const deviceId = String(body.deviceId || 'WN-001').trim();
+              const temperature = parseFloat(body.temperature);
+              const humidity = parseFloat(body.humidity);
+
+              if (isNaN(temperature) || isNaN(humidity)) {
+                res.statusCode = 400;
+                res.setHeader('Content-Type', 'application/json');
+                return res.end(
+                  JSON.stringify({ success: false, error: 'Missing or invalid temperature and humidity' })
+                );
+              }
+
+              let risk = body.risk;
+              if (!risk || !['SAFE', 'MEDIUM', 'HIGH', 'CRITICAL'].includes(String(risk).toUpperCase())) {
+                if (temperature >= 35 || humidity >= 80) risk = 'CRITICAL';
+                else if (temperature >= 32 || humidity >= 76) risk = 'HIGH';
+                else if (temperature >= 29 || humidity >= 71) risk = 'MEDIUM';
+                else risk = 'SAFE';
+              } else {
+                risk = String(risk).toUpperCase();
+              }
+
+              const record = {
+                deviceId,
+                temperature: Math.round(temperature * 10) / 10,
+                humidity: Math.round(humidity),
+                risk,
+                deviceStatus: body.deviceStatus === 'OFFLINE' ? 'OFFLINE' : 'ONLINE',
+                battery: typeof body.battery === 'number' ? body.battery : 98,
+                timestamp: body.timestamp || new Date().toISOString(),
+                source: 'real',
+              };
+
+              store.set(deviceId, record);
+
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json');
+              return res.end(
+                JSON.stringify({ success: true, message: `Telemetry updated for ${deviceId}`, data: record })
+              );
+            } catch (e: any) {
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json');
+              return res.end(JSON.stringify({ success: false, error: e?.message || 'Server error' }));
+            }
+          });
+          return;
+        }
+
+        next();
+      });
+    },
+  };
+}
+
 export default defineConfig({
   plugins: [
     blinkEnsureRootCss(),
     blinkRouteTreeHealth(),
+    waneesApiPlugin(),
     // Tailwind v4 via the official Vite plugin. Handles `@import "tailwindcss"`
     // itself (must NOT be a PostCSS plugin here — TanStack Start's prerender build
     // runs postcss-import first and can't resolve the v4 bare import → build fails).
@@ -272,7 +380,7 @@ export default defineConfig({
   server: {
     port: 3000,
     strictPort: true,
-    host: true,
+    host: '0.0.0.0',
     allowedHosts: true,
   },
   build: {

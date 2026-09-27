@@ -51,14 +51,14 @@ export const Route = createRootRoute({
     meta: [
       { charSet: 'utf-8' },
       { name: 'viewport', content: 'width=device-width, initial-scale=1.0' },
-      { title: 'Blink App' },
-      { name: 'description', content: 'An app built with Blink.' },
+      { title: 'Wanees Shipment Tracker' },
+      { name: 'description', content: 'Smart shipment monitoring dashboard to track environmental conditions, detect cargo risks, and monitor connected ESP32 sensor units.' },
       { name: 'theme-color', content: '#0a0a0a' },
       { property: 'og:type', content: 'website' },
-      { property: 'og:title', content: 'Blink App' },
-      { property: 'og:description', content: 'An app built with Blink.' },
+      { property: 'og:title', content: 'Wanees Shipment Tracker' },
+      { property: 'og:description', content: 'Smart shipment monitoring dashboard to track environmental conditions, detect cargo risks, and monitor connected ESP32 sensor units.' },
       // Shared-shell SEO defaults — set these to the real brand/locale per app.
-      { property: 'og:site_name', content: 'Blink App' },
+      { property: 'og:site_name', content: 'Wanees' },
       { property: 'og:locale', content: 'en_US' },
       { name: 'twitter:card', content: 'summary_large_image' },
     ],
@@ -90,8 +90,8 @@ function RootDocument({ children }: { children: ReactNode }) {
             __html: JSON.stringify({
               '@context': 'https://schema.org',
               '@graph': [
-                { '@type': 'WebSite', name: 'Blink App', url: '/' },
-                { '@type': 'Organization', name: 'Blink App', url: '/', sameAs: [] },
+                { '@type': 'WebSite', name: 'Wanees Shipment Tracker', url: '/' },
+                { '@type': 'Organization', name: 'Wanees', url: '/', sameAs: [] },
               ],
             }),
           }}
