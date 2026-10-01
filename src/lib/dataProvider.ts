@@ -20,8 +20,10 @@ export interface MovementData {
   accelerationY: number;
   accelerationZ: number;
   magnitude: number;
+  shockG: number;
   status: MovementStatus;
   statusLabel: 'Normal' | 'Movement detected' | 'Shock detected';
+  userStatus: string;
   description: string;
 }
 
@@ -30,6 +32,8 @@ export interface HistoricalMotionReading {
   x: number;
   y: number;
   z: number;
+  shockG: number;
+  status: string;
 }
 
 export const MOVEMENT_THRESHOLDS = {
@@ -52,19 +56,43 @@ export function computeMovementStatus(
   const magnitude = Math.sqrt(ax * ax + ay * ay + az * az);
   const deviation = Math.abs(magnitude - MOVEMENT_THRESHOLDS.GRAVITY_BASELINE);
   const horizMax = Math.max(Math.abs(ax), Math.abs(ay));
+  const excessDev = Math.max(deviation, horizMax);
 
   let status: MovementStatus = 'NORMAL';
   let statusLabel: 'Normal' | 'Movement detected' | 'Shock detected' = 'Normal';
-  let description = 'Normal acceleration within steady baseline';
+  let userStatus = 'Normal handling';
+  let shockG = 0.2;
+  let description = 'Cargo handling is steady and within normal transport limits.';
 
   if (deviation >= MOVEMENT_THRESHOLDS.SHOCK_DEVIATION || horizMax >= MOVEMENT_THRESHOLDS.HORIZONTAL_SHOCK) {
     status = 'SHOCK_DETECTED';
     statusLabel = 'Shock detected';
-    description = `High acceleration shock detected (${magnitude.toFixed(2)} m/s²). Impact warning.`;
+    const shockFactor = 3.5 + ((excessDev - MOVEMENT_THRESHOLDS.SHOCK_DEVIATION) / 4.0) * 3.5;
+    shockG = Math.round(Math.min(15.0, Math.max(3.5, shockFactor)) * 10) / 10;
+    if (shockG >= 6.0) {
+      userStatus = 'Critical impact';
+      description = `Critical physical impact detected (${shockG.toFixed(1)} g). Urgent inspection advised.`;
+    } else {
+      userStatus = 'Strong impact detected';
+      description = `Strong shock detected (${shockG.toFixed(1)} g). Cargo may have experienced harsh handling.`;
+    }
   } else if (deviation >= MOVEMENT_THRESHOLDS.MOVEMENT_DEVIATION || horizMax >= MOVEMENT_THRESHOLDS.HORIZONTAL_MOVEMENT) {
     status = 'MOVEMENT_DETECTED';
     statusLabel = 'Movement detected';
-    description = `Active movement detected (${magnitude.toFixed(2)} m/s²). Shipment in motion.`;
+    const moveFactor = 1.0 + ((excessDev - MOVEMENT_THRESHOLDS.MOVEMENT_DEVIATION) / (MOVEMENT_THRESHOLDS.SHOCK_DEVIATION - MOVEMENT_THRESHOLDS.MOVEMENT_DEVIATION)) * 1.5;
+    shockG = Math.round(Math.max(1.0, Math.min(2.9, moveFactor)) * 10) / 10;
+    if (shockG >= 2.0) {
+      userStatus = 'Moderate impact';
+      description = `Moderate impact detected (${shockG.toFixed(1)} g). Transit vibration recorded.`;
+    } else {
+      userStatus = 'Movement detected';
+      description = `Active movement detected (${shockG.toFixed(1)} g). Shipment in transit.`;
+    }
+  } else {
+    const normFactor = 0.2 + (excessDev / MOVEMENT_THRESHOLDS.MOVEMENT_DEVIATION) * 0.4;
+    shockG = Math.round(Math.max(0.1, Math.min(0.8, normFactor)) * 10) / 10;
+    userStatus = 'Normal handling';
+    description = 'Cargo handling is steady and within normal transport limits.';
   }
 
   return {
@@ -72,8 +100,10 @@ export function computeMovementStatus(
     accelerationY: Math.round(ay * 100) / 100,
     accelerationZ: Math.round(az * 100) / 100,
     magnitude: Math.round(magnitude * 100) / 100,
+    shockG,
     status,
     statusLabel,
+    userStatus,
     description,
   };
 }
@@ -116,6 +146,8 @@ export interface NormalizedDeviceData {
   accelerationX?: number;
   accelerationY?: number;
   accelerationZ?: number;
+  shockG?: number;
+  movementStatus?: string;
   movement?: MovementData;
   location?: GpsLocation;
   latitude?: number;
@@ -285,12 +317,12 @@ export class RealDeviceProvider implements WaneesDataProvider {
     { time: 'Now', temperature: 27.4, humidity: 53 },
   ];
   private motionHistory: HistoricalMotionReading[] = [
-    { time: '00:00', x: 0.05, y: -0.02, z: 9.80 },
-    { time: '04:00', x: 0.08, y: -0.01, z: 9.82 },
-    { time: '08:00', x: 0.15, y: -0.06, z: 9.79 },
-    { time: '12:00', x: 0.10, y: -0.03, z: 9.81 },
-    { time: '16:00', x: 0.14, y: -0.05, z: 9.83 },
-    { time: 'Now', x: 0.12, y: -0.04, z: 9.81 },
+    { time: '10:15', x: 0.05, y: -0.02, z: 9.80, shockG: 0.2, status: 'Normal handling' },
+    { time: '10:25', x: 0.08, y: -0.01, z: 9.82, shockG: 0.2, status: 'Normal handling' },
+    { time: '10:32', x: 0.12, y: -0.03, z: 9.81, shockG: 0.2, status: 'Normal handling' },
+    { time: '10:37', x: 1.85, y: -1.20, z: 10.45, shockG: 1.1, status: 'Movement detected' },
+    { time: '10:41', x: 0.15, y: -0.04, z: 9.81, shockG: 0.2, status: 'Normal handling' },
+    { time: 'Now', x: 0.12, y: -0.04, z: 9.81, shockG: 0.2, status: 'Normal handling' },
   ];
 
   constructor() {
@@ -309,6 +341,8 @@ export class RealDeviceProvider implements WaneesDataProvider {
       accelerationX: 0.12,
       accelerationY: -0.04,
       accelerationZ: 9.81,
+      shockG: baseMovement?.shockG ?? 0.2,
+      movementStatus: baseMovement?.userStatus ?? 'Normal handling',
       movement: baseMovement,
       location: { latitude: 30.0444, longitude: 31.2357 },
       latitude: 30.0444,
@@ -373,6 +407,8 @@ export class RealDeviceProvider implements WaneesDataProvider {
               accelerationX: ax,
               accelerationY: ay,
               accelerationZ: az,
+              shockG: remote.shockG ?? movement?.shockG ?? 0.2,
+              movementStatus: remote.movementStatus ?? movement?.userStatus ?? 'Normal handling',
               movement,
               location: remote.location ?? this.lastKnownData.location,
               latitude: remote.latitude ?? remote.location?.latitude ?? this.lastKnownData.latitude,
@@ -504,11 +540,14 @@ export class RealDeviceProvider implements WaneesDataProvider {
     if (this.motionHistory.length >= 8) {
       this.motionHistory.shift();
     }
+    const movement = computeMovementStatus(x, y, z);
     this.motionHistory[this.motionHistory.length - 1] = {
       time: 'Now',
       x: Math.round(x * 100) / 100,
       y: Math.round(y * 100) / 100,
       z: Math.round(z * 100) / 100,
+      shockG: movement?.shockG ?? 0.2,
+      status: movement?.userStatus ?? 'Normal handling',
     };
   }
 }

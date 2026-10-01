@@ -12,8 +12,10 @@ export interface MovementData {
   accelerationY: number;
   accelerationZ: number;
   magnitude: number;
+  shockG: number;
   status: MovementStatus;
   statusLabel: 'Normal' | 'Movement detected' | 'Shock detected';
+  userStatus: string;
   description: string;
 }
 
@@ -59,6 +61,8 @@ export interface DeviceTelemetryRecord {
   accelerationX?: number;
   accelerationY?: number;
   accelerationZ?: number;
+  shockG?: number;
+  movementStatus?: string;
   movement?: MovementData;
   location?: GpsLocation;
   latitude?: number;
@@ -81,19 +85,43 @@ export function computeMovementStatus(
   const magnitude = Math.sqrt(ax * ax + ay * ay + az * az);
   const deviation = Math.abs(magnitude - MOVEMENT_THRESHOLDS.GRAVITY_BASELINE);
   const horizMax = Math.max(Math.abs(ax), Math.abs(ay));
+  const excessDev = Math.max(deviation, horizMax);
 
   let status: MovementStatus = 'NORMAL';
   let statusLabel: 'Normal' | 'Movement detected' | 'Shock detected' = 'Normal';
-  let description = 'Normal acceleration within steady baseline';
+  let userStatus = 'Normal handling';
+  let shockG = 0.2;
+  let description = 'Cargo handling is steady and within normal transport limits.';
 
   if (deviation >= MOVEMENT_THRESHOLDS.SHOCK_DEVIATION || horizMax >= MOVEMENT_THRESHOLDS.HORIZONTAL_SHOCK) {
     status = 'SHOCK_DETECTED';
     statusLabel = 'Shock detected';
-    description = `High acceleration shock detected (${magnitude.toFixed(2)} m/s²). Impact warning.`;
+    const shockFactor = 3.5 + ((excessDev - MOVEMENT_THRESHOLDS.SHOCK_DEVIATION) / 4.0) * 3.5;
+    shockG = Math.round(Math.min(15.0, Math.max(3.5, shockFactor)) * 10) / 10;
+    if (shockG >= 6.0) {
+      userStatus = 'Critical impact';
+      description = `Critical physical impact detected (${shockG.toFixed(1)} g). Urgent inspection advised.`;
+    } else {
+      userStatus = 'Strong impact detected';
+      description = `Strong shock detected (${shockG.toFixed(1)} g). Cargo may have experienced harsh handling.`;
+    }
   } else if (deviation >= MOVEMENT_THRESHOLDS.MOVEMENT_DEVIATION || horizMax >= MOVEMENT_THRESHOLDS.HORIZONTAL_MOVEMENT) {
     status = 'MOVEMENT_DETECTED';
     statusLabel = 'Movement detected';
-    description = `Active movement detected (${magnitude.toFixed(2)} m/s²). Shipment in motion.`;
+    const moveFactor = 1.0 + ((excessDev - MOVEMENT_THRESHOLDS.MOVEMENT_DEVIATION) / (MOVEMENT_THRESHOLDS.SHOCK_DEVIATION - MOVEMENT_THRESHOLDS.MOVEMENT_DEVIATION)) * 1.5;
+    shockG = Math.round(Math.max(1.0, Math.min(2.9, moveFactor)) * 10) / 10;
+    if (shockG >= 2.0) {
+      userStatus = 'Moderate impact';
+      description = `Moderate impact detected (${shockG.toFixed(1)} g). Transit vibration recorded.`;
+    } else {
+      userStatus = 'Movement detected';
+      description = `Active movement detected (${shockG.toFixed(1)} g). Shipment in transit.`;
+    }
+  } else {
+    const normFactor = 0.2 + (excessDev / MOVEMENT_THRESHOLDS.MOVEMENT_DEVIATION) * 0.4;
+    shockG = Math.round(Math.max(0.1, Math.min(0.8, normFactor)) * 10) / 10;
+    userStatus = 'Normal handling';
+    description = 'Cargo handling is steady and within normal transport limits.';
   }
 
   return {
@@ -101,8 +129,10 @@ export function computeMovementStatus(
     accelerationY: Math.round(ay * 100) / 100,
     accelerationZ: Math.round(az * 100) / 100,
     magnitude: Math.round(magnitude * 100) / 100,
+    shockG,
     status,
     statusLabel,
+    userStatus,
     description,
   };
 }
@@ -230,6 +260,8 @@ deviceStorage.set('WN-001', {
   accelerationX: 0.12,
   accelerationY: -0.04,
   accelerationZ: 9.81,
+  shockG: initialMovement?.shockG ?? 0.2,
+  movementStatus: initialMovement?.userStatus ?? 'Normal handling',
   movement: initialMovement,
   location: { latitude: 30.0444, longitude: 31.2357 },
   latitude: 30.0444,
@@ -347,6 +379,8 @@ export default async function handler(req: any, res: any) {
         accelerationX,
         accelerationY,
         accelerationZ,
+        shockG: movement?.shockG ?? 0.2,
+        movementStatus: movement?.userStatus ?? 'Normal handling',
         movement,
         location,
         latitude: location?.latitude ?? body.latitude,

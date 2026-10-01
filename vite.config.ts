@@ -235,18 +235,42 @@ function waneesApiPlugin() {
     const magnitude = Math.sqrt(ax * ax + ay * ay + az * az);
     const deviation = Math.abs(magnitude - 9.81);
     const horizMax = Math.max(Math.abs(ax), Math.abs(ay));
+    const excessDev = Math.max(deviation, horizMax);
     let status = 'NORMAL';
     let statusLabel = 'Normal';
-    let description = 'Normal acceleration within steady baseline';
+    let userStatus = 'Normal handling';
+    let shockG = 0.2;
+    let description = 'Cargo handling is steady and within normal transport limits.';
 
     if (deviation >= 6.0 || horizMax >= 5.5) {
       status = 'SHOCK_DETECTED';
       statusLabel = 'Shock detected';
-      description = `High acceleration shock detected (${magnitude.toFixed(2)} m/s²). Impact warning.`;
+      const shockFactor = 3.5 + ((excessDev - 6.0) / 4.0) * 3.5;
+      shockG = Math.round(Math.min(15.0, Math.max(3.5, shockFactor)) * 10) / 10;
+      if (shockG >= 6.0) {
+        userStatus = 'Critical impact';
+        description = `Critical physical impact detected (${shockG.toFixed(1)} g). Urgent inspection advised.`;
+      } else {
+        userStatus = 'Strong impact detected';
+        description = `Strong shock detected (${shockG.toFixed(1)} g). Cargo may have experienced harsh handling.`;
+      }
     } else if (deviation >= 1.2 || horizMax >= 1.2) {
       status = 'MOVEMENT_DETECTED';
       statusLabel = 'Movement detected';
-      description = `Active movement detected (${magnitude.toFixed(2)} m/s²). Shipment in motion.`;
+      const moveFactor = 1.0 + ((excessDev - 1.2) / (6.0 - 1.2)) * 1.5;
+      shockG = Math.round(Math.max(1.0, Math.min(2.9, moveFactor)) * 10) / 10;
+      if (shockG >= 2.0) {
+        userStatus = 'Moderate impact';
+        description = `Moderate impact detected (${shockG.toFixed(1)} g). Transit vibration recorded.`;
+      } else {
+        userStatus = 'Movement detected';
+        description = `Active movement detected (${shockG.toFixed(1)} g). Shipment in transit.`;
+      }
+    } else {
+      const normFactor = 0.2 + (excessDev / 1.2) * 0.4;
+      shockG = Math.round(Math.max(0.1, Math.min(0.8, normFactor)) * 10) / 10;
+      userStatus = 'Normal handling';
+      description = 'Cargo handling is steady and within normal transport limits.';
     }
 
     return {
@@ -254,8 +278,10 @@ function waneesApiPlugin() {
       accelerationY: Math.round(ay * 100) / 100,
       accelerationZ: Math.round(az * 100) / 100,
       magnitude: Math.round(magnitude * 100) / 100,
+      shockG,
       status,
       statusLabel,
+      userStatus,
       description,
     };
   }
@@ -274,6 +300,8 @@ function waneesApiPlugin() {
     accelerationX: 0.12,
     accelerationY: -0.04,
     accelerationZ: 9.81,
+    shockG: defaultMovement?.shockG ?? 0.2,
+    movementStatus: defaultMovement?.userStatus ?? 'Normal handling',
     movement: defaultMovement,
     location: { latitude: 30.0444, longitude: 31.2357 },
     latitude: 30.0444,
@@ -378,6 +406,8 @@ function waneesApiPlugin() {
                 accelerationX,
                 accelerationY,
                 accelerationZ,
+                shockG: movement?.shockG ?? 0.2,
+                movementStatus: movement?.userStatus ?? 'Normal handling',
                 movement,
                 location,
                 latitude: location?.latitude ?? body.latitude,

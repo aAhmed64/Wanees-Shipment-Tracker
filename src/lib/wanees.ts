@@ -42,6 +42,8 @@ export type SensorReading = {
   accelerationX?: number
   accelerationY?: number
   accelerationZ?: number
+  shockG?: number
+  movementStatus?: string
   movement?: MovementData
   actuators?: ActuatorState
   riskAssessment?: RiskAssessment
@@ -109,6 +111,8 @@ export const defaultShipments: Shipment[] = [
       accelerationX: 0.12,
       accelerationY: -0.04,
       accelerationZ: 9.81,
+      shockG: 0.2,
+      movementStatus: 'Normal handling',
       movement: computeMovementStatus(0.12, -0.04, 9.81),
       actuators: computeActuators('SAFE', 'ONLINE'),
       riskAssessment: computeRiskAssessment(27.4, 53),
@@ -292,6 +296,8 @@ export const shipmentService = {
         const ay = realSnapshot?.accelerationY ?? item.reading.accelerationY ?? -0.04
         const az = realSnapshot?.accelerationZ ?? item.reading.accelerationZ ?? 9.81
         const movement = realSnapshot?.movement ?? computeMovementStatus(ax, ay, az)
+        const shockG = realSnapshot?.shockG ?? movement?.shockG ?? 0.2
+        const movementStatus = realSnapshot?.movementStatus ?? movement?.userStatus ?? 'Normal handling'
 
         return {
           ...item,
@@ -305,6 +311,8 @@ export const shipmentService = {
             accelerationX: ax,
             accelerationY: ay,
             accelerationZ: az,
+            shockG,
+            movementStatus,
             movement,
             actuators,
             riskAssessment,
@@ -325,6 +333,8 @@ export const shipmentService = {
         const ay = p.accelerationY ?? item.reading.accelerationY ?? 0
         const az = p.accelerationZ ?? item.reading.accelerationZ ?? 9.81
         const movement = computeMovementStatus(ax, ay, az)
+        const shockG = movement?.shockG ?? (overrideRisk === 'CRITICAL' ? 4.8 : overrideRisk === 'MEDIUM' ? 1.4 : 0.2)
+        const movementStatus = movement?.userStatus ?? (overrideRisk === 'CRITICAL' ? 'Strong impact detected' : overrideRisk === 'MEDIUM' ? 'Movement detected' : 'Normal handling')
         return {
           ...item,
           reading: {
@@ -337,6 +347,8 @@ export const shipmentService = {
             accelerationX: ax,
             accelerationY: ay,
             accelerationZ: az,
+            shockG,
+            movementStatus,
             movement,
             actuators,
             riskAssessment,
@@ -449,6 +461,14 @@ export function mockHistory(reading: SensorReading | Omit<SensorReading, 'update
 }
 
 export function mockMotionHistory(shipment: Shipment): HistoricalMotionReading[] {
+  const currentMovement = shipment.reading.movement || computeMovementStatus(
+    shipment.reading.accelerationX,
+    shipment.reading.accelerationY,
+    shipment.reading.accelerationZ
+  )
+  const currShock = shipment.reading.shockG ?? currentMovement?.shockG ?? 0.2
+  const currStatus = shipment.reading.movementStatus ?? currentMovement?.userStatus ?? 'Normal handling'
+
   if (shipment.source === 'real') {
     const realMotion = waneesDataService.realProvider.getMotionHistory()
     if (realMotion && realMotion.length > 0) {
@@ -459,25 +479,32 @@ export function mockMotionHistory(shipment: Shipment): HistoricalMotionReading[]
             x: shipment.reading.accelerationX ?? pt.x,
             y: shipment.reading.accelerationY ?? pt.y,
             z: shipment.reading.accelerationZ ?? pt.z,
+            shockG: currShock,
+            status: currStatus,
           }
         }
-        return pt
+        return {
+          ...pt,
+          shockG: pt.shockG ?? 0.2,
+          status: pt.status ?? 'Normal handling',
+        }
       })
     }
   }
 
-  const currX = shipment.reading.accelerationX ?? 0.12
-  const currY = shipment.reading.accelerationY ?? -0.04
-  const currZ = shipment.reading.accelerationZ ?? 9.81
-  const labels = ['00:00', '04:00', '08:00', '12:00', '16:00', 'Now']
-  return labels.map((time, idx) => {
-    if (idx === labels.length - 1) return { time, x: currX, y: currY, z: currZ }
-    const factor = (idx + 1) / labels.length
-    return {
-      time,
-      x: Math.round((currX * factor + (idx % 2 === 0 ? 0.04 : -0.04)) * 100) / 100,
-      y: Math.round((currY * factor + (idx % 2 === 0 ? -0.02 : 0.02)) * 100) / 100,
-      z: Math.round((9.81 + (currZ - 9.81) * factor + (idx % 2 === 0 ? 0.03 : -0.03)) * 100) / 100,
-    }
-  })
+  return [
+    { time: '10:15', x: 0.05, y: -0.02, z: 9.80, shockG: 0.2, status: 'Normal handling' },
+    { time: '10:25', x: 0.08, y: -0.01, z: 9.82, shockG: 0.2, status: 'Normal handling' },
+    { time: '10:32', x: 0.12, y: -0.03, z: 9.81, shockG: 0.2, status: 'Normal handling' },
+    { time: '10:37', x: 1.85, y: -1.20, z: 10.45, shockG: 1.1, status: 'Movement detected' },
+    { time: '10:41', x: 0.15, y: -0.04, z: 9.81, shockG: 0.2, status: 'Normal handling' },
+    {
+      time: 'Now',
+      x: shipment.reading.accelerationX ?? 0.12,
+      y: shipment.reading.accelerationY ?? -0.04,
+      z: shipment.reading.accelerationZ ?? 9.81,
+      shockG: currShock,
+      status: currStatus,
+    },
+  ]
 }
