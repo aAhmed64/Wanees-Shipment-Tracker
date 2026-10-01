@@ -13,6 +13,71 @@ export type RiskLevel = 'SAFE' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 export type DeviceStatus = 'ONLINE' | 'OFFLINE' | 'SLEEP' | 'WARNING' | 'ERROR';
 export type DataSource = 'real' | 'simulation';
 
+export type MovementStatus = 'NORMAL' | 'MOVEMENT_DETECTED' | 'SHOCK_DETECTED';
+
+export interface MovementData {
+  accelerationX: number;
+  accelerationY: number;
+  accelerationZ: number;
+  magnitude: number;
+  status: MovementStatus;
+  statusLabel: 'Normal' | 'Movement detected' | 'Shock detected';
+  description: string;
+}
+
+export interface HistoricalMotionReading {
+  time: string;
+  x: number;
+  y: number;
+  z: number;
+}
+
+export const MOVEMENT_THRESHOLDS = {
+  GRAVITY_BASELINE: 9.81, // Earth standard gravity (m/s²)
+  MOVEMENT_DEVIATION: 1.2, // Deviation threshold indicating active shipment movement/vibration
+  SHOCK_DEVIATION: 6.0,    // High deviation threshold indicating physical impact/shock
+  HORIZONTAL_MOVEMENT: 1.2, // Horizontal tilt/displacement threshold
+  HORIZONTAL_SHOCK: 5.5,   // Horizontal impact threshold
+};
+
+export function computeMovementStatus(
+  ax?: number,
+  ay?: number,
+  az?: number
+): MovementData | undefined {
+  if (ax === undefined || ay === undefined || az === undefined) {
+    return undefined;
+  }
+
+  const magnitude = Math.sqrt(ax * ax + ay * ay + az * az);
+  const deviation = Math.abs(magnitude - MOVEMENT_THRESHOLDS.GRAVITY_BASELINE);
+  const horizMax = Math.max(Math.abs(ax), Math.abs(ay));
+
+  let status: MovementStatus = 'NORMAL';
+  let statusLabel: 'Normal' | 'Movement detected' | 'Shock detected' = 'Normal';
+  let description = 'Normal acceleration within steady baseline';
+
+  if (deviation >= MOVEMENT_THRESHOLDS.SHOCK_DEVIATION || horizMax >= MOVEMENT_THRESHOLDS.HORIZONTAL_SHOCK) {
+    status = 'SHOCK_DETECTED';
+    statusLabel = 'Shock detected';
+    description = `High acceleration shock detected (${magnitude.toFixed(2)} m/s²). Impact warning.`;
+  } else if (deviation >= MOVEMENT_THRESHOLDS.MOVEMENT_DEVIATION || horizMax >= MOVEMENT_THRESHOLDS.HORIZONTAL_MOVEMENT) {
+    status = 'MOVEMENT_DETECTED';
+    statusLabel = 'Movement detected';
+    description = `Active movement detected (${magnitude.toFixed(2)} m/s²). Shipment in motion.`;
+  }
+
+  return {
+    accelerationX: Math.round(ax * 100) / 100,
+    accelerationY: Math.round(ay * 100) / 100,
+    accelerationZ: Math.round(az * 100) / 100,
+    magnitude: Math.round(magnitude * 100) / 100,
+    status,
+    statusLabel,
+    description,
+  };
+}
+
 export interface ActuatorState {
   ledGreen: boolean;
   ledYellow: boolean;
@@ -48,6 +113,10 @@ export interface NormalizedDeviceData {
   source: DataSource;
   battery?: number;
   signalStrength?: number;
+  accelerationX?: number;
+  accelerationY?: number;
+  accelerationZ?: number;
+  movement?: MovementData;
   location?: GpsLocation;
   latitude?: number;
   longitude?: number;
@@ -215,9 +284,18 @@ export class RealDeviceProvider implements WaneesDataProvider {
     { time: '16:00', temperature: 27.1, humidity: 53 },
     { time: 'Now', temperature: 27.4, humidity: 53 },
   ];
+  private motionHistory: HistoricalMotionReading[] = [
+    { time: '00:00', x: 0.05, y: -0.02, z: 9.80 },
+    { time: '04:00', x: 0.08, y: -0.01, z: 9.82 },
+    { time: '08:00', x: 0.15, y: -0.06, z: 9.79 },
+    { time: '12:00', x: 0.10, y: -0.03, z: 9.81 },
+    { time: '16:00', x: 0.14, y: -0.05, z: 9.83 },
+    { time: 'Now', x: 0.12, y: -0.04, z: 9.81 },
+  ];
 
   constructor() {
     const baseAssessment = computeRiskAssessment(27.4, 53);
+    const baseMovement = computeMovementStatus(0.12, -0.04, 9.81);
     this.lastKnownData = {
       deviceId: 'WN-001',
       temperature: 27.4,
@@ -228,6 +306,10 @@ export class RealDeviceProvider implements WaneesDataProvider {
       source: 'real',
       battery: 98,
       signalStrength: -65,
+      accelerationX: 0.12,
+      accelerationY: -0.04,
+      accelerationZ: 9.81,
+      movement: baseMovement,
       location: { latitude: 30.0444, longitude: 31.2357 },
       latitude: 30.0444,
       longitude: 31.2357,
@@ -264,11 +346,18 @@ export class RealDeviceProvider implements WaneesDataProvider {
         if (res.ok) {
           const json = await res.json();
           if (json.success && json.data) {
-            const remote = json.data;
+            const remote = Array.isArray(json.data)
+              ? (json.data.find((d: any) => d.deviceId === deviceId) || json.data[0])
+              : json.data;
+            if (!remote) return this.lastKnownData;
             const temp = remote.temperature ?? this.lastKnownData.temperature;
             const hum = remote.humidity ?? this.lastKnownData.humidity;
             const risk = remote.risk || calculateRisk(temp, hum);
             const status = remote.deviceStatus || 'ONLINE';
+            const ax = remote.accelerationX ?? this.lastKnownData.accelerationX;
+            const ay = remote.accelerationY ?? this.lastKnownData.accelerationY;
+            const az = remote.accelerationZ ?? this.lastKnownData.accelerationZ;
+            const movement = remote.movement ?? computeMovementStatus(ax, ay, az);
 
             const updated: NormalizedDeviceData = {
               ...this.lastKnownData,
@@ -281,6 +370,10 @@ export class RealDeviceProvider implements WaneesDataProvider {
               source: 'real',
               battery: remote.battery ?? this.lastKnownData.battery,
               signalStrength: remote.signalStrength ?? this.lastKnownData.signalStrength,
+              accelerationX: ax,
+              accelerationY: ay,
+              accelerationZ: az,
+              movement,
               location: remote.location ?? this.lastKnownData.location,
               latitude: remote.latitude ?? remote.location?.latitude ?? this.lastKnownData.latitude,
               longitude: remote.longitude ?? remote.location?.longitude ?? this.lastKnownData.longitude,
@@ -292,6 +385,9 @@ export class RealDeviceProvider implements WaneesDataProvider {
 
             this.lastKnownData = updated;
             this.recordHistory(updated.temperature, updated.humidity);
+            if (ax !== undefined && ay !== undefined && az !== undefined) {
+              this.recordMotionHistory(ax, ay, az);
+            }
 
             try {
               localStorage.setItem(REAL_STORAGE_KEY, JSON.stringify(updated));
@@ -331,6 +427,10 @@ export class RealDeviceProvider implements WaneesDataProvider {
     const riskAssessment = computeRiskAssessment(temperature, humidity, risk);
     const deviceStatus: DeviceStatus = extraFields?.deviceStatus || 'ONLINE';
     const actuators = computeActuators(risk, deviceStatus);
+    const ax = extraFields?.accelerationX ?? this.lastKnownData.accelerationX;
+    const ay = extraFields?.accelerationY ?? this.lastKnownData.accelerationY;
+    const az = extraFields?.accelerationZ ?? this.lastKnownData.accelerationZ;
+    const movement = extraFields?.movement ?? computeMovementStatus(ax, ay, az);
 
     const payload = {
       deviceId: 'WN-001',
@@ -342,6 +442,10 @@ export class RealDeviceProvider implements WaneesDataProvider {
       source: 'real' as const,
       battery: extraFields?.battery ?? this.lastKnownData.battery ?? 98,
       signalStrength: extraFields?.signalStrength ?? this.lastKnownData.signalStrength ?? -65,
+      accelerationX: ax,
+      accelerationY: ay,
+      accelerationZ: az,
+      movement,
       location: extraFields?.location ?? this.lastKnownData.location,
       latitude: extraFields?.latitude ?? this.lastKnownData.latitude,
       longitude: extraFields?.longitude ?? this.lastKnownData.longitude,
@@ -364,6 +468,9 @@ export class RealDeviceProvider implements WaneesDataProvider {
 
     this.lastKnownData = { ...this.lastKnownData, ...payload };
     this.recordHistory(temperature, humidity);
+    if (ax !== undefined && ay !== undefined && az !== undefined) {
+      this.recordMotionHistory(ax, ay, az);
+    }
 
     try {
       localStorage.setItem(REAL_STORAGE_KEY, JSON.stringify(this.lastKnownData));
@@ -378,6 +485,10 @@ export class RealDeviceProvider implements WaneesDataProvider {
     return [...this.history];
   }
 
+  getMotionHistory(): HistoricalMotionReading[] {
+    return [...this.motionHistory];
+  }
+
   private recordHistory(temperature: number, humidity: number) {
     if (this.history.length >= 8) {
       this.history.shift();
@@ -386,6 +497,18 @@ export class RealDeviceProvider implements WaneesDataProvider {
       time: 'Now',
       temperature,
       humidity,
+    };
+  }
+
+  private recordMotionHistory(x: number, y: number, z: number) {
+    if (this.motionHistory.length >= 8) {
+      this.motionHistory.shift();
+    }
+    this.motionHistory[this.motionHistory.length - 1] = {
+      time: 'Now',
+      x: Math.round(x * 100) / 100,
+      y: Math.round(y * 100) / 100,
+      z: Math.round(z * 100) / 100,
     };
   }
 }
@@ -406,6 +529,10 @@ export class SimulationProvider implements WaneesDataProvider {
       source: 'simulation',
       battery: 84,
       signalStrength: -72,
+      accelerationX: 0.28,
+      accelerationY: -0.15,
+      accelerationZ: 9.84,
+      movement: computeMovementStatus(0.28, -0.15, 9.84),
       location: { latitude: 21.5433, longitude: 39.1728 },
       latitude: 21.5433,
       longitude: 39.1728,
@@ -428,6 +555,10 @@ export class SimulationProvider implements WaneesDataProvider {
       source: 'simulation',
       battery: 76,
       signalStrength: -80,
+      accelerationX: 1.85,
+      accelerationY: -1.42,
+      accelerationZ: 11.20,
+      movement: computeMovementStatus(1.85, -1.42, 11.20),
       location: { latitude: 25.2048, longitude: 55.2708 },
       latitude: 25.2048,
       longitude: 55.2708,
@@ -450,6 +581,10 @@ export class SimulationProvider implements WaneesDataProvider {
       source: 'simulation',
       battery: 91,
       signalStrength: -68,
+      accelerationX: 0.04,
+      accelerationY: 0.02,
+      accelerationZ: 9.81,
+      movement: computeMovementStatus(0.04, 0.02, 9.81),
       location: { latitude: 31.9454, longitude: 35.9284 },
       latitude: 31.9454,
       longitude: 35.9284,
@@ -464,11 +599,11 @@ export class SimulationProvider implements WaneesDataProvider {
     },
   };
 
-  private simulationProfiles: Record<RiskLevel, { temperature: number; humidity: number }> = {
-    SAFE: { temperature: 27.4, humidity: 68 },
-    MEDIUM: { temperature: 30.8, humidity: 75 },
-    HIGH: { temperature: 33.5, humidity: 79 },
-    CRITICAL: { temperature: 35.8, humidity: 82 },
+  private simulationProfiles: Record<RiskLevel, { temperature: number; humidity: number; accelerationX: number; accelerationY: number; accelerationZ: number }> = {
+    SAFE: { temperature: 27.4, humidity: 68, accelerationX: 0.10, accelerationY: -0.04, accelerationZ: 9.81 },
+    MEDIUM: { temperature: 30.8, humidity: 75, accelerationX: 0.45, accelerationY: -0.25, accelerationZ: 9.95 },
+    HIGH: { temperature: 33.5, humidity: 79, accelerationX: 1.65, accelerationY: -1.20, accelerationZ: 10.80 },
+    CRITICAL: { temperature: 35.8, humidity: 82, accelerationX: 3.20, accelerationY: -2.10, accelerationZ: 13.50 },
   };
 
   private getOverrides(): Record<string, RiskLevel> {
@@ -504,6 +639,10 @@ export class SimulationProvider implements WaneesDataProvider {
       risk: activeRisk,
       temperature: profile.temperature,
       humidity: profile.humidity,
+      accelerationX: profile.accelerationX,
+      accelerationY: profile.accelerationY,
+      accelerationZ: profile.accelerationZ,
+      movement: computeMovementStatus(profile.accelerationX, profile.accelerationY, profile.accelerationZ),
       riskAssessment: computeRiskAssessment(profile.temperature, profile.humidity),
       actuators: computeActuators(activeRisk, base.deviceStatus),
       source: 'simulation',
@@ -522,6 +661,10 @@ export class SimulationProvider implements WaneesDataProvider {
         risk: activeRisk,
         temperature: profile.temperature,
         humidity: profile.humidity,
+        accelerationX: profile.accelerationX,
+        accelerationY: profile.accelerationY,
+        accelerationZ: profile.accelerationZ,
+        movement: computeMovementStatus(profile.accelerationX, profile.accelerationY, profile.accelerationZ),
         riskAssessment: computeRiskAssessment(profile.temperature, profile.humidity),
         actuators: computeActuators(activeRisk, base.deviceStatus),
         source: 'simulation',

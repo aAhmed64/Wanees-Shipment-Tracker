@@ -5,6 +5,26 @@ export type RiskLevel = 'SAFE' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 export type DeviceStatus = 'ONLINE' | 'OFFLINE' | 'SLEEP' | 'WARNING' | 'ERROR';
 export type DataSource = 'real' | 'simulation';
 
+export type MovementStatus = 'NORMAL' | 'MOVEMENT_DETECTED' | 'SHOCK_DETECTED';
+
+export interface MovementData {
+  accelerationX: number;
+  accelerationY: number;
+  accelerationZ: number;
+  magnitude: number;
+  status: MovementStatus;
+  statusLabel: 'Normal' | 'Movement detected' | 'Shock detected';
+  description: string;
+}
+
+export const MOVEMENT_THRESHOLDS = {
+  GRAVITY_BASELINE: 9.81, // Earth standard gravity (m/s²)
+  MOVEMENT_DEVIATION: 1.2, // Deviation threshold indicating active shipment movement/vibration
+  SHOCK_DEVIATION: 6.0,    // High deviation threshold indicating physical impact/shock
+  HORIZONTAL_MOVEMENT: 1.2, // Horizontal tilt/displacement threshold
+  HORIZONTAL_SHOCK: 5.5,   // Horizontal impact threshold
+};
+
 export interface ActuatorState {
   ledGreen: boolean;
   ledYellow: boolean;
@@ -36,6 +56,10 @@ export interface DeviceTelemetryRecord {
   source: DataSource;
   battery: number;
   signalStrength?: number;
+  accelerationX?: number;
+  accelerationY?: number;
+  accelerationZ?: number;
+  movement?: MovementData;
   location?: GpsLocation;
   latitude?: number;
   longitude?: number;
@@ -43,6 +67,44 @@ export interface DeviceTelemetryRecord {
   riskAssessment: RiskAssessment;
   actuators: ActuatorState;
   metadata?: Record<string, any>;
+}
+
+export function computeMovementStatus(
+  ax?: number,
+  ay?: number,
+  az?: number
+): MovementData | undefined {
+  if (ax === undefined || ay === undefined || az === undefined) {
+    return undefined;
+  }
+
+  const magnitude = Math.sqrt(ax * ax + ay * ay + az * az);
+  const deviation = Math.abs(magnitude - MOVEMENT_THRESHOLDS.GRAVITY_BASELINE);
+  const horizMax = Math.max(Math.abs(ax), Math.abs(ay));
+
+  let status: MovementStatus = 'NORMAL';
+  let statusLabel: 'Normal' | 'Movement detected' | 'Shock detected' = 'Normal';
+  let description = 'Normal acceleration within steady baseline';
+
+  if (deviation >= MOVEMENT_THRESHOLDS.SHOCK_DEVIATION || horizMax >= MOVEMENT_THRESHOLDS.HORIZONTAL_SHOCK) {
+    status = 'SHOCK_DETECTED';
+    statusLabel = 'Shock detected';
+    description = `High acceleration shock detected (${magnitude.toFixed(2)} m/s²). Impact warning.`;
+  } else if (deviation >= MOVEMENT_THRESHOLDS.MOVEMENT_DEVIATION || horizMax >= MOVEMENT_THRESHOLDS.HORIZONTAL_MOVEMENT) {
+    status = 'MOVEMENT_DETECTED';
+    statusLabel = 'Movement detected';
+    description = `Active movement detected (${magnitude.toFixed(2)} m/s²). Shipment in motion.`;
+  }
+
+  return {
+    accelerationX: Math.round(ax * 100) / 100,
+    accelerationY: Math.round(ay * 100) / 100,
+    accelerationZ: Math.round(az * 100) / 100,
+    magnitude: Math.round(magnitude * 100) / 100,
+    status,
+    statusLabel,
+    description,
+  };
 }
 
 export function computeRiskAssessment(
@@ -156,6 +218,7 @@ const deviceStorage = new Map<string, DeviceTelemetryRecord>();
 
 // Seed default physical device baseline (WN-001)
 const initialAssessment = computeRiskAssessment(27.4, 53);
+const initialMovement = computeMovementStatus(0.12, -0.04, 9.81);
 deviceStorage.set('WN-001', {
   deviceId: 'WN-001',
   temperature: 27.4,
@@ -164,6 +227,10 @@ deviceStorage.set('WN-001', {
   deviceStatus: 'ONLINE',
   battery: 98,
   signalStrength: -65,
+  accelerationX: 0.12,
+  accelerationY: -0.04,
+  accelerationZ: 9.81,
+  movement: initialMovement,
   location: { latitude: 30.0444, longitude: 31.2357 },
   latitude: 30.0444,
   longitude: 31.2357,
@@ -246,6 +313,17 @@ export default async function handler(req: any, res: any) {
       // Actuator State (LEDs, Buzzer) computed from risk and status
       const actuators = computeActuators(risk, deviceStatus);
 
+      // MPU6050 Motion / Acceleration telemetry (optional, extensible)
+      const rawAx = body.accelerationX !== undefined ? (typeof body.accelerationX === 'number' ? body.accelerationX : parseFloat(body.accelerationX)) : undefined;
+      const rawAy = body.accelerationY !== undefined ? (typeof body.accelerationY === 'number' ? body.accelerationY : parseFloat(body.accelerationY)) : undefined;
+      const rawAz = body.accelerationZ !== undefined ? (typeof body.accelerationZ === 'number' ? body.accelerationZ : parseFloat(body.accelerationZ)) : undefined;
+
+      const accelerationX = rawAx !== undefined && !isNaN(rawAx) ? Math.round(rawAx * 100) / 100 : undefined;
+      const accelerationY = rawAy !== undefined && !isNaN(rawAy) ? Math.round(rawAy * 100) / 100 : undefined;
+      const accelerationZ = rawAz !== undefined && !isNaN(rawAz) ? Math.round(rawAz * 100) / 100 : undefined;
+
+      const movement = computeMovementStatus(accelerationX, accelerationY, accelerationZ);
+
       // Location / GPS handling
       const location: GpsLocation | undefined = body.location
         ? {
@@ -266,6 +344,10 @@ export default async function handler(req: any, res: any) {
         deviceStatus,
         battery: typeof body.battery === 'number' ? body.battery : 98,
         signalStrength: typeof body.signalStrength === 'number' ? body.signalStrength : (body.rssi ?? -65),
+        accelerationX,
+        accelerationY,
+        accelerationZ,
+        movement,
         location,
         latitude: location?.latitude ?? body.latitude,
         longitude: location?.longitude ?? body.longitude,

@@ -3,15 +3,29 @@ import {
   calculateRisk,
   computeRiskAssessment,
   computeActuators,
+  computeMovementStatus,
+  MOVEMENT_THRESHOLDS,
   type NormalizedDeviceData,
   type DataSource,
   type ActuatorState,
   type RiskAssessment,
   type GpsLocation,
+  type MovementStatus,
+  type MovementData,
+  type HistoricalMotionReading,
 } from './dataProvider'
 
-export type { DataSource, ActuatorState, RiskAssessment, GpsLocation, NormalizedDeviceData }
-export { calculateRisk, computeRiskAssessment, computeActuators }
+export type {
+  DataSource,
+  ActuatorState,
+  RiskAssessment,
+  GpsLocation,
+  NormalizedDeviceData,
+  MovementStatus,
+  MovementData,
+  HistoricalMotionReading,
+}
+export { calculateRisk, computeRiskAssessment, computeActuators, computeMovementStatus, MOVEMENT_THRESHOLDS }
 
 export type RiskLevel = 'SAFE' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
 export type DeviceStatus = 'ONLINE' | 'OFFLINE' | 'SLEEP' | 'WARNING' | 'ERROR'
@@ -25,6 +39,10 @@ export type SensorReading = {
   updated: string
   battery?: number
   signalStrength?: number
+  accelerationX?: number
+  accelerationY?: number
+  accelerationZ?: number
+  movement?: MovementData
   actuators?: ActuatorState
   riskAssessment?: RiskAssessment
 }
@@ -88,6 +106,10 @@ export const defaultShipments: Shipment[] = [
       updated: 'Just now',
       battery: 98,
       signalStrength: -65,
+      accelerationX: 0.12,
+      accelerationY: -0.04,
+      accelerationZ: 9.81,
+      movement: computeMovementStatus(0.12, -0.04, 9.81),
       actuators: computeActuators('SAFE', 'ONLINE'),
       riskAssessment: computeRiskAssessment(27.4, 53),
     },
@@ -109,6 +131,10 @@ export const defaultShipments: Shipment[] = [
       updated: '10 sec ago',
       battery: 84,
       signalStrength: -72,
+      accelerationX: 0.28,
+      accelerationY: -0.15,
+      accelerationZ: 9.84,
+      movement: computeMovementStatus(0.28, -0.15, 9.84),
       actuators: computeActuators('MEDIUM', 'ONLINE'),
       riskAssessment: computeRiskAssessment(30.8, 75),
     },
@@ -130,6 +156,10 @@ export const defaultShipments: Shipment[] = [
       updated: '5 sec ago',
       battery: 76,
       signalStrength: -80,
+      accelerationX: 1.85,
+      accelerationY: -1.42,
+      accelerationZ: 11.20,
+      movement: computeMovementStatus(1.85, -1.42, 11.20),
       actuators: computeActuators('CRITICAL', 'ONLINE'),
       riskAssessment: computeRiskAssessment(35.8, 82),
     },
@@ -151,6 +181,10 @@ export const defaultShipments: Shipment[] = [
       updated: '12 sec ago',
       battery: 91,
       signalStrength: -68,
+      accelerationX: 0.04,
+      accelerationY: 0.02,
+      accelerationZ: 9.81,
+      movement: computeMovementStatus(0.04, 0.02, 9.81),
       actuators: computeActuators('SAFE', 'ONLINE'),
       riskAssessment: computeRiskAssessment(24.5, 62),
     },
@@ -254,6 +288,10 @@ export const shipmentService = {
         const status = realSnapshot?.deviceStatus ?? 'ONLINE'
         const actuators = realSnapshot?.actuators ?? computeActuators(risk, status)
         const riskAssessment = realSnapshot?.riskAssessment ?? computeRiskAssessment(temp, hum, risk)
+        const ax = realSnapshot?.accelerationX ?? item.reading.accelerationX ?? 0.12
+        const ay = realSnapshot?.accelerationY ?? item.reading.accelerationY ?? -0.04
+        const az = realSnapshot?.accelerationZ ?? item.reading.accelerationZ ?? 9.81
+        const movement = realSnapshot?.movement ?? computeMovementStatus(ax, ay, az)
 
         return {
           ...item,
@@ -264,6 +302,10 @@ export const shipmentService = {
             updated: 'Live from ESP32',
             battery: realSnapshot?.battery ?? 98,
             signalStrength: realSnapshot?.signalStrength ?? -65,
+            accelerationX: ax,
+            accelerationY: ay,
+            accelerationZ: az,
+            movement,
             actuators,
             riskAssessment,
           },
@@ -279,6 +321,10 @@ export const shipmentService = {
         const p = simProfiles[overrideRisk]
         const actuators = computeActuators(overrideRisk, 'ONLINE')
         const riskAssessment = computeRiskAssessment(p.temperature, p.humidity, overrideRisk)
+        const ax = p.accelerationX ?? item.reading.accelerationX ?? 0.1
+        const ay = p.accelerationY ?? item.reading.accelerationY ?? 0
+        const az = p.accelerationZ ?? item.reading.accelerationZ ?? 9.81
+        const movement = computeMovementStatus(ax, ay, az)
         return {
           ...item,
           reading: {
@@ -288,6 +334,10 @@ export const shipmentService = {
             updated: 'Just now (simulated)',
             battery: item.reading.battery ?? 85,
             signalStrength: item.reading.signalStrength ?? -70,
+            accelerationX: ax,
+            accelerationY: ay,
+            accelerationZ: az,
+            movement,
             actuators,
             riskAssessment,
           },
@@ -396,4 +446,38 @@ export function mockHistory(reading: SensorReading | Omit<SensorReading, 'update
   const humidity = [64, 65, 66, 67, 68, reading.humidity]
   const labels = ['00:00', '04:00', '08:00', '12:00', '16:00', 'Now']
   return labels.map((time, index) => ({ time, temperature: temp[index], humidity: humidity[index] }))
+}
+
+export function mockMotionHistory(shipment: Shipment): HistoricalMotionReading[] {
+  if (shipment.source === 'real') {
+    const realMotion = waneesDataService.realProvider.getMotionHistory()
+    if (realMotion && realMotion.length > 0) {
+      return realMotion.map((pt, idx) => {
+        if (idx === realMotion.length - 1) {
+          return {
+            time: 'Now',
+            x: shipment.reading.accelerationX ?? pt.x,
+            y: shipment.reading.accelerationY ?? pt.y,
+            z: shipment.reading.accelerationZ ?? pt.z,
+          }
+        }
+        return pt
+      })
+    }
+  }
+
+  const currX = shipment.reading.accelerationX ?? 0.12
+  const currY = shipment.reading.accelerationY ?? -0.04
+  const currZ = shipment.reading.accelerationZ ?? 9.81
+  const labels = ['00:00', '04:00', '08:00', '12:00', '16:00', 'Now']
+  return labels.map((time, idx) => {
+    if (idx === labels.length - 1) return { time, x: currX, y: currY, z: currZ }
+    const factor = (idx + 1) / labels.length
+    return {
+      time,
+      x: Math.round((currX * factor + (idx % 2 === 0 ? 0.04 : -0.04)) * 100) / 100,
+      y: Math.round((currY * factor + (idx % 2 === 0 ? -0.02 : 0.02)) * 100) / 100,
+      z: Math.round((9.81 + (currZ - 9.81) * factor + (idx % 2 === 0 ? 0.03 : -0.03)) * 100) / 100,
+    }
+  })
 }

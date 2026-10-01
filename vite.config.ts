@@ -230,8 +230,39 @@ function waneesApiPlugin() {
     }
   }
 
+  function computeMovementStatus(ax?: number, ay?: number, az?: number) {
+    if (ax === undefined || ay === undefined || az === undefined) return undefined;
+    const magnitude = Math.sqrt(ax * ax + ay * ay + az * az);
+    const deviation = Math.abs(magnitude - 9.81);
+    const horizMax = Math.max(Math.abs(ax), Math.abs(ay));
+    let status = 'NORMAL';
+    let statusLabel = 'Normal';
+    let description = 'Normal acceleration within steady baseline';
+
+    if (deviation >= 6.0 || horizMax >= 5.5) {
+      status = 'SHOCK_DETECTED';
+      statusLabel = 'Shock detected';
+      description = `High acceleration shock detected (${magnitude.toFixed(2)} m/s²). Impact warning.`;
+    } else if (deviation >= 1.2 || horizMax >= 1.2) {
+      status = 'MOVEMENT_DETECTED';
+      statusLabel = 'Movement detected';
+      description = `Active movement detected (${magnitude.toFixed(2)} m/s²). Shipment in motion.`;
+    }
+
+    return {
+      accelerationX: Math.round(ax * 100) / 100,
+      accelerationY: Math.round(ay * 100) / 100,
+      accelerationZ: Math.round(az * 100) / 100,
+      magnitude: Math.round(magnitude * 100) / 100,
+      status,
+      statusLabel,
+      description,
+    };
+  }
+
   // Baseline physical device
   const defaultAssessment = computeRiskAssessment(27.4, 53);
+  const defaultMovement = computeMovementStatus(0.12, -0.04, 9.81);
   store.set('WN-001', {
     deviceId: 'WN-001',
     temperature: 27.4,
@@ -240,6 +271,10 @@ function waneesApiPlugin() {
     deviceStatus: 'ONLINE',
     battery: 98,
     signalStrength: -65,
+    accelerationX: 0.12,
+    accelerationY: -0.04,
+    accelerationZ: 9.81,
+    movement: defaultMovement,
     location: { latitude: 30.0444, longitude: 31.2357 },
     latitude: 30.0444,
     longitude: 31.2357,
@@ -311,6 +346,16 @@ function waneesApiPlugin() {
               const risk = riskAssessment.level;
               const actuators = computeActuators(risk, deviceStatus);
 
+              const rawAx = body.accelerationX !== undefined ? (typeof body.accelerationX === 'number' ? body.accelerationX : parseFloat(body.accelerationX)) : undefined;
+              const rawAy = body.accelerationY !== undefined ? (typeof body.accelerationY === 'number' ? body.accelerationY : parseFloat(body.accelerationY)) : undefined;
+              const rawAz = body.accelerationZ !== undefined ? (typeof body.accelerationZ === 'number' ? body.accelerationZ : parseFloat(body.accelerationZ)) : undefined;
+
+              const accelerationX = rawAx !== undefined && !isNaN(rawAx) ? Math.round(rawAx * 100) / 100 : undefined;
+              const accelerationY = rawAy !== undefined && !isNaN(rawAy) ? Math.round(rawAy * 100) / 100 : undefined;
+              const accelerationZ = rawAz !== undefined && !isNaN(rawAz) ? Math.round(rawAz * 100) / 100 : undefined;
+
+              const movement = computeMovementStatus(accelerationX, accelerationY, accelerationZ);
+
               const location = body.location
                 ? {
                     latitude: Number(body.location.latitude) || 30.0444,
@@ -330,6 +375,10 @@ function waneesApiPlugin() {
                 deviceStatus,
                 battery: typeof body.battery === 'number' ? body.battery : 98,
                 signalStrength: typeof body.signalStrength === 'number' ? body.signalStrength : (body.rssi ?? -65),
+                accelerationX,
+                accelerationY,
+                accelerationZ,
+                movement,
                 location,
                 latitude: location?.latitude ?? body.latitude,
                 longitude: location?.longitude ?? body.longitude,

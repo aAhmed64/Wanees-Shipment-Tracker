@@ -32,12 +32,15 @@ import {
   authService,
   deviceService,
   mockHistory,
+  mockMotionHistory,
   shipmentService,
   type Alert,
   type Device,
   type RiskLevel,
   type Shipment,
   type User,
+  type MovementStatus,
+  type MovementData,
 } from '@/lib/wanees'
 import { waneesDataService } from '@/lib/dataProvider'
 
@@ -140,6 +143,40 @@ function RiskBadge({ level }: { level: string }) {
     >
       <span className={`h-1.5 w-1.5 rounded-full ${riskDot[level] ?? riskDot.RESOLVED}`} />
       {level}
+    </span>
+  )
+}
+
+const movementStyle: Record<string, string> = {
+  NORMAL: 'border-emerald-400/20 bg-emerald-400/10 text-emerald-300',
+  MOVEMENT_DETECTED: 'border-amber-300/20 bg-amber-300/10 text-amber-200',
+  SHOCK_DETECTED: 'border-red-400/25 bg-red-400/10 text-red-300',
+}
+
+const movementDot: Record<string, string> = {
+  NORMAL: 'bg-emerald-400',
+  MOVEMENT_DETECTED: 'bg-amber-300',
+  SHOCK_DETECTED: 'bg-red-400',
+}
+
+function MovementBadge({ status, label }: { status?: string; label?: string }) {
+  const normStatus = (status || 'NORMAL').toUpperCase().replace(/\s+/g, '_')
+  const displayLabel =
+    label ||
+    (normStatus === 'SHOCK_DETECTED'
+      ? 'Shock detected'
+      : normStatus === 'MOVEMENT_DETECTED'
+      ? 'Movement detected'
+      : 'Normal')
+  const styleClass = movementStyle[normStatus] || movementStyle.NORMAL
+  const dotClass = movementDot[normStatus] || movementDot.NORMAL
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[10px] font-bold tracking-wide ${styleClass}`}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${dotClass}`} />
+      {displayLabel}
     </span>
   )
 }
@@ -295,6 +332,134 @@ function SensorChart({ shipment, kind }: { shipment: Shipment; kind: 'temperatur
   )
 }
 
+function MovementChart({ shipment }: { shipment: Shipment }) {
+  const motionHistory = mockMotionHistory(shipment)
+  const xValues = motionHistory.map(m => m.x)
+  const yValues = motionHistory.map(m => m.y)
+  const zValues = motionHistory.map(m => m.z)
+
+  const allValues = [...xValues, ...yValues, ...zValues]
+  const min = Math.min(-2, ...allValues) - 1
+  const max = Math.max(13, ...allValues) + 1
+  const range = max - min || 1
+
+  const getYCoord = (val: number) => 46 - ((val - min) / range) * 38
+
+  const xPoints = xValues
+    .map((v, i) => `${i * (100 / (xValues.length - 1 || 1))},${getYCoord(v)}`)
+    .join(' ')
+  const yPoints = yValues
+    .map((v, i) => `${i * (100 / (yValues.length - 1 || 1))},${getYCoord(v)}`)
+    .join(' ')
+  const zPoints = zValues
+    .map((v, i) => `${i * (100 / (zValues.length - 1 || 1))},${getYCoord(v)}`)
+    .join(' ')
+
+  const currX = shipment.reading.accelerationX ?? xValues[xValues.length - 1] ?? 0.12
+  const currY = shipment.reading.accelerationY ?? yValues[yValues.length - 1] ?? -0.04
+  const currZ = shipment.reading.accelerationZ ?? zValues[zValues.length - 1] ?? 9.81
+
+  return (
+    <div className="rounded-xl border border-border/80 bg-background/50 p-4 sm:p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <p className="text-xs font-semibold">3-Axis Motion History (X, Y, Z)</p>
+            <SourceBadge source={shipment.source} />
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-4 font-mono text-xs">
+            <span className="flex items-center gap-1.5 text-sky-400">
+              <span className="h-2 w-2 rounded-full bg-sky-400" />
+              <span>X: <b>{currX.toFixed(2)}</b></span>
+            </span>
+            <span className="flex items-center gap-1.5 text-purple-400">
+              <span className="h-2 w-2 rounded-full bg-purple-400" />
+              <span>Y: <b>{currY.toFixed(2)}</b></span>
+            </span>
+            <span className="flex items-center gap-1.5 text-amber-400">
+              <span className="h-2 w-2 rounded-full bg-amber-400" />
+              <span>Z: <b>{currZ.toFixed(2)}</b></span>
+            </span>
+            <span className="text-[10px] text-muted-foreground font-sans">(m/s²)</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="rounded border border-border bg-card px-2 py-1 text-[9px] font-medium text-muted-foreground">
+            {shipment.source === 'real' ? 'LIVE TELEMETRY' : 'RECENT READINGS'}
+          </span>
+        </div>
+      </div>
+
+      <svg
+        viewBox="0 0 100 56"
+        preserveAspectRatio="none"
+        className="mt-4 h-28 w-full overflow-visible"
+        aria-label="Acceleration X, Y, Z over recent readings"
+        role="img"
+      >
+        <path d="M0 48 H100 M0 28 H100 M0 8 H100" stroke="var(--border)" strokeDasharray="1.4 2.2" strokeWidth=".45" fill="none" />
+        
+        {/* X axis */}
+        <polyline
+          points={xPoints}
+          fill="none"
+          stroke="#38bdf8"
+          strokeWidth="1.3"
+          vectorEffect="non-scaling-stroke"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <circle
+          cx="100"
+          cy={getYCoord(currX)}
+          r="1.7"
+          fill="#38bdf8"
+        />
+
+        {/* Y axis */}
+        <polyline
+          points={yPoints}
+          fill="none"
+          stroke="#c084fc"
+          strokeWidth="1.3"
+          vectorEffect="non-scaling-stroke"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <circle
+          cx="100"
+          cy={getYCoord(currY)}
+          r="1.7"
+          fill="#c084fc"
+        />
+
+        {/* Z axis */}
+        <polyline
+          points={zPoints}
+          fill="none"
+          stroke="#fbbf24"
+          strokeWidth="1.3"
+          vectorEffect="non-scaling-stroke"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <circle
+          cx="100"
+          cy={getYCoord(currZ)}
+          r="1.7"
+          fill="#fbbf24"
+        />
+      </svg>
+
+      <div className="mt-2 flex justify-between font-mono text-[9px] text-muted-foreground">
+        {motionHistory.map((point, idx) => (
+          <span key={idx}>{point.time}</span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function WaneesApp() {
   const [path, setPath] = useState('/')
   const [user, setUser] = useState<User | null>(null)
@@ -377,7 +542,9 @@ export function WaneesApp() {
   }
 
   const activeShipment = path.startsWith('/shipments/')
-    ? shipments.find(item => item.id === path.split('/')[2])
+    ? shipments.find(item => item.id.toLowerCase() === path.split('/')[2]?.toLowerCase())
+    : path.startsWith('/dashboard/shipments/')
+    ? shipments.find(item => item.id.toLowerCase() === path.split('/')[3]?.toLowerCase())
     : undefined
 
   const activeDevice = path.startsWith('/devices/')
@@ -400,10 +567,23 @@ export function WaneesApp() {
     setNotice(`Simulation updated: ${shipmentId} is now ${risk}.`)
   }
 
-  const handleTriggerTestTelemetry = async (temp: number, hum: number, risk?: RiskLevel) => {
-    await waneesDataService.triggerTestTelemetry(temp, hum, risk)
+  const handleTriggerTestTelemetry = async (
+    temp: number,
+    hum: number,
+    risk?: RiskLevel,
+    ax?: number,
+    ay?: number,
+    az?: number
+  ) => {
+    await waneesDataService.triggerTestTelemetry(temp, hum, risk, {
+      accelerationX: ax,
+      accelerationY: ay,
+      accelerationZ: az,
+    })
     refreshData()
-    setNotice(`Test telemetry transmitted: ${temp}°C / ${hum}% sent to WN-001 (Physical ESP32).`)
+    setNotice(
+      `Test telemetry transmitted: ${temp}°C / ${hum}% (X:${ax !== undefined ? ax.toFixed(2) : '0.12'}, Y:${ay !== undefined ? ay.toFixed(2) : '-0.04'}, Z:${az !== undefined ? az.toFixed(2) : '9.81'}) sent to WN-001 (Physical ESP32).`
+    )
   }
 
   const handleLogin = (email: string, password: string) => {
@@ -798,7 +978,15 @@ function Dashboard({
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-400/30 bg-emerald-400/10 px-2.5 py-1 font-mono text-[10px] font-bold text-emerald-300">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                MPU6050: Connected
+              </span>
+              <MovementBadge
+                status={realShipment.reading.movement?.status}
+                label={realShipment.reading.movement?.statusLabel}
+              />
               <RiskBadge level={realShipment.reading.risk} />
               <button
                 onClick={() => onOpen(realShipment.id)}
@@ -808,28 +996,82 @@ function Dashboard({
               </button>
             </div>
           </div>
-          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+
+          {/* Primary Telemetry Grid: Environmental + Acceleration */}
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             <div className="rounded-lg border border-border/80 bg-background/60 p-3">
               <span className="text-[9px] font-semibold tracking-wider text-muted-foreground">LIVE TEMPERATURE</span>
               <p className="mt-1 font-mono text-xl font-bold text-foreground">
                 {realShipment.reading.temperature.toFixed(1)}°C
               </p>
-              <span className="text-[9px] text-muted-foreground">DHT sensor reading</span>
+              <span className="text-[9px] text-muted-foreground">DHT22 sensor</span>
             </div>
             <div className="rounded-lg border border-border/80 bg-background/60 p-3">
               <span className="text-[9px] font-semibold tracking-wider text-muted-foreground">LIVE HUMIDITY</span>
               <p className="mt-1 font-mono text-xl font-bold text-foreground">{realShipment.reading.humidity}%</p>
-              <span className="text-[9px] text-muted-foreground">DHT sensor reading</span>
+              <span className="text-[9px] text-muted-foreground">DHT22 sensor</span>
             </div>
-            <div className="rounded-lg border border-border/80 bg-background/60 p-3">
-              <span className="text-[9px] font-semibold tracking-wider text-muted-foreground">RISK EVALUATION</span>
-              <p className="mt-1 font-mono text-xl font-bold text-foreground">{realShipment.reading.risk}</p>
-              <span className="text-[9px] text-muted-foreground">Evaluated by Wanees</span>
+            <div className="rounded-lg border border-sky-400/25 bg-sky-400/[0.05] p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[9px] font-semibold tracking-wider text-sky-400">ACCELERATION X</span>
+                <span className="h-1.5 w-1.5 rounded-full bg-sky-400" />
+              </div>
+              <p className="mt-1 font-mono text-xl font-bold text-foreground">
+                {(realShipment.reading.accelerationX ?? 0).toFixed(2)}{' '}
+                <span className="text-[10px] font-normal text-muted-foreground">m/s²</span>
+              </p>
+              <span className="text-[9px] text-muted-foreground">MPU6050 lateral</span>
             </div>
-            <div className="rounded-lg border border-border/80 bg-background/60 p-3">
-              <span className="text-[9px] font-semibold tracking-wider text-muted-foreground">ENDPOINT STATUS</span>
-              <p className="mt-1 font-mono text-sm font-bold text-emerald-300">ONLINE / READY</p>
-              <span className="text-[9px] text-muted-foreground">POST /api/device/data</span>
+            <div className="rounded-lg border border-purple-400/25 bg-purple-400/[0.05] p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[9px] font-semibold tracking-wider text-purple-400">ACCELERATION Y</span>
+                <span className="h-1.5 w-1.5 rounded-full bg-purple-400" />
+              </div>
+              <p className="mt-1 font-mono text-xl font-bold text-foreground">
+                {(realShipment.reading.accelerationY ?? 0).toFixed(2)}{' '}
+                <span className="text-[10px] font-normal text-muted-foreground">m/s²</span>
+              </p>
+              <span className="text-[9px] text-muted-foreground">MPU6050 front-back</span>
+            </div>
+            <div className="rounded-lg border border-amber-400/25 bg-amber-400/[0.05] p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[9px] font-semibold tracking-wider text-amber-400">ACCELERATION Z</span>
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+              </div>
+              <p className="mt-1 font-mono text-xl font-bold text-foreground">
+                {(realShipment.reading.accelerationZ ?? 9.81).toFixed(2)}{' '}
+                <span className="text-[10px] font-normal text-muted-foreground">m/s²</span>
+              </p>
+              <span className="text-[9px] text-muted-foreground">MPU6050 vertical</span>
+            </div>
+          </div>
+
+          {/* Motion Status & Live 3-Axis Chart */}
+          <div className="mt-4 rounded-xl border border-border/70 bg-background/40 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="rounded-md border border-primary/20 bg-primary/10 p-1.5 text-primary">
+                  <Activity className="h-3.5 w-3.5" />
+                </span>
+                <div>
+                  <span className="text-xs font-semibold text-foreground">Motion &amp; Movement Dynamics</span>
+                  <p className="text-[10px] text-muted-foreground">
+                    {realShipment.reading.movement?.description || 'Normal acceleration within steady baseline.'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <MovementBadge
+                  status={realShipment.reading.movement?.status}
+                  label={realShipment.reading.movement?.statusLabel}
+                />
+                <span className="font-mono text-[10px] text-muted-foreground">
+                  Magnitude: {(realShipment.reading.movement?.magnitude ?? 9.81).toFixed(2)} m/s²
+                </span>
+              </div>
+            </div>
+            <div className="mt-3">
+              <MovementChart shipment={realShipment} />
             </div>
           </div>
         </Panel>
@@ -1016,15 +1258,25 @@ function Esp32TestPanel({
   onSendTelemetry,
 }: {
   onClose: () => void
-  onSendTelemetry: (temp: number, hum: number, risk?: RiskLevel) => Promise<void>
+  onSendTelemetry: (
+    temp: number,
+    hum: number,
+    risk?: RiskLevel,
+    ax?: number,
+    ay?: number,
+    az?: number
+  ) => Promise<void>
 }) {
-  const [customTemp, setCustomTemp] = useState('28.5')
-  const [customHum, setCustomHum] = useState('55')
+  const [customTemp, setCustomTemp] = useState('27.4')
+  const [customHum, setCustomHum] = useState('53')
+  const [customAx, setCustomAx] = useState('0.0')
+  const [customAy, setCustomAy] = useState('0.0')
+  const [customAz, setCustomAz] = useState('9.81')
   const [copied, setCopied] = useState(false)
 
   const curlCommand = `curl -X POST http://localhost:3000/api/device/data \\
   -H "Content-Type: application/json" \\
-  -d '{"deviceId":"WN-001","temperature":${customTemp},"humidity":${customHum}}'`
+  -d '{"deviceId":"WN-001","temperature":${customTemp},"humidity":${customHum},"accelerationX":${customAx},"accelerationY":${customAy},"accelerationZ":${customAz}}'`
 
   const handleCopy = () => {
     navigator.clipboard?.writeText(curlCommand)
@@ -1036,9 +1288,21 @@ function Esp32TestPanel({
     e.preventDefault()
     const t = parseFloat(customTemp)
     const h = parseFloat(customHum)
+    const ax = parseFloat(customAx)
+    const ay = parseFloat(customAy)
+    const az = parseFloat(customAz)
     if (!isNaN(t) && !isNaN(h)) {
-      onSendTelemetry(t, h)
+      onSendTelemetry(t, h, undefined, isNaN(ax) ? 0.0 : ax, isNaN(ay) ? 0.0 : ay, isNaN(az) ? 9.81 : az)
     }
+  }
+
+  const applyPreset = (t: number, h: number, ax: number, ay: number, az: number, r?: RiskLevel) => {
+    setCustomTemp(t.toString())
+    setCustomHum(h.toString())
+    setCustomAx(ax.toString())
+    setCustomAy(ay.toString())
+    setCustomAz(az.toString())
+    onSendTelemetry(t, h, r, ax, ay, az)
   }
 
   return (
@@ -1051,7 +1315,7 @@ function Esp32TestPanel({
             </span>
             <h3 className="text-sm font-semibold">ESP32 Hardware Telemetry Test Transmitter</h3>
             <span className="rounded-md border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[9px] font-bold text-emerald-300">
-              MOCK TESTER FOR DEMO
+              DHT22 + MPU6050 TESTER
             </span>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
@@ -1066,58 +1330,95 @@ function Esp32TestPanel({
 
       <div className="mt-4 grid gap-5 lg:grid-cols-2">
         <div>
-          <p className="text-[10px] font-bold tracking-wider text-muted-foreground">QUICK PRESETS (TEST ESP32 STATES)</p>
+          <p className="text-[10px] font-bold tracking-wider text-muted-foreground">MOTION PRESETS (DHT22 &amp; MPU6050 ACCELERATION)</p>
           <div className="mt-2 grid grid-cols-3 gap-2">
             <button
-              onClick={() => onSendTelemetry(27.4, 53, 'SAFE')}
-              className="flex flex-col items-center rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-3 text-center transition hover:bg-emerald-400/20"
+              onClick={() => applyPreset(27.4, 53, 0.0, 0.0, 9.81, 'SAFE')}
+              className="flex flex-col items-center rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-2.5 text-center transition hover:bg-emerald-400/20"
             >
-              <span className="font-mono text-xs font-bold text-emerald-300">27.4°C / 53%</span>
-              <span className="mt-1 text-[9px] font-bold text-emerald-400">● SAFE</span>
+              <span className="font-mono text-[11px] font-bold text-emerald-300">27.4°C / 53%</span>
+              <span className="mt-0.5 font-mono text-[9px] text-muted-foreground">Z: 9.81 m/s²</span>
+              <span className="mt-1 text-[9px] font-bold text-emerald-400">● Rest</span>
             </button>
             <button
-              onClick={() => onSendTelemetry(31.8, 76, 'MEDIUM')}
-              className="flex flex-col items-center rounded-lg border border-amber-300/30 bg-amber-300/10 p-3 text-center transition hover:bg-amber-300/20"
+              onClick={() => applyPreset(28.5, 58, 1.85, -1.20, 10.45, 'MEDIUM')}
+              className="flex flex-col items-center rounded-lg border border-amber-300/30 bg-amber-300/10 p-2.5 text-center transition hover:bg-amber-300/20"
             >
-              <span className="font-mono text-xs font-bold text-amber-200">31.8°C / 76%</span>
-              <span className="mt-1 text-[9px] font-bold text-amber-300">▲ MEDIUM</span>
+              <span className="font-mono text-[11px] font-bold text-amber-200">28.5°C / 58%</span>
+              <span className="mt-0.5 font-mono text-[9px] text-muted-foreground">X: 1.85 m/s²</span>
+              <span className="mt-1 text-[9px] font-bold text-amber-300">▲ Movement</span>
             </button>
             <button
-              onClick={() => onSendTelemetry(37.2, 85, 'CRITICAL')}
-              className="flex flex-col items-center rounded-lg border border-red-400/30 bg-red-400/10 p-3 text-center transition hover:bg-red-400/20"
+              onClick={() => applyPreset(29.2, 62, 7.50, -5.20, 18.20, 'CRITICAL')}
+              className="flex flex-col items-center rounded-lg border border-red-400/30 bg-red-400/10 p-2.5 text-center transition hover:bg-red-400/20"
             >
-              <span className="font-mono text-xs font-bold text-red-300">37.2°C / 85%</span>
-              <span className="mt-1 text-[9px] font-bold text-red-400">■ CRITICAL</span>
+              <span className="font-mono text-[11px] font-bold text-red-300">29.2°C / 62%</span>
+              <span className="mt-0.5 font-mono text-[9px] text-muted-foreground">Shock: 20 m/s²</span>
+              <span className="mt-1 text-[9px] font-bold text-red-400">■ Shock</span>
             </button>
           </div>
 
-          <form onSubmit={handleCustomSubmit} className="mt-4 flex flex-wrap items-end gap-3 rounded-lg border border-border bg-secondary/30 p-3">
-            <label className="min-w-[100px] flex-1">
-              <span className="text-[9px] font-semibold text-muted-foreground">CUSTOM TEMP (°C)</span>
-              <input
-                type="number"
-                step="0.1"
-                value={customTemp}
-                onChange={e => setCustomTemp(e.target.value)}
-                className="mt-1 h-9 w-full rounded border border-border bg-background px-2.5 font-mono text-xs outline-none focus:border-primary"
-              />
-            </label>
-            <label className="min-w-[100px] flex-1">
-              <span className="text-[9px] font-semibold text-muted-foreground">CUSTOM HUMIDITY (%)</span>
-              <input
-                type="number"
-                step="1"
-                value={customHum}
-                onChange={e => setCustomHum(e.target.value)}
-                className="mt-1 h-9 w-full rounded border border-border bg-background px-2.5 font-mono text-xs outline-none focus:border-primary"
-              />
-            </label>
-            <button
-              type="submit"
-              className="inline-flex h-9 items-center gap-1.5 rounded bg-primary px-3 text-xs font-bold text-primary-foreground hover:brightness-110"
-            >
-              <Send className="h-3.5 w-3.5" /> Send to API
-            </button>
+          <form onSubmit={handleCustomSubmit} className="mt-4 rounded-lg border border-border bg-secondary/30 p-3">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+              <label>
+                <span className="text-[9px] font-semibold text-muted-foreground">TEMP (°C)</span>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={customTemp}
+                  onChange={e => setCustomTemp(e.target.value)}
+                  className="mt-1 h-8 w-full rounded border border-border bg-background px-2 font-mono text-xs outline-none focus:border-primary"
+                />
+              </label>
+              <label>
+                <span className="text-[9px] font-semibold text-muted-foreground">HUMIDITY (%)</span>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={customHum}
+                  onChange={e => setCustomHum(e.target.value)}
+                  className="mt-1 h-8 w-full rounded border border-border bg-background px-2 font-mono text-xs outline-none focus:border-primary"
+                />
+              </label>
+              <label>
+                <span className="text-[9px] font-semibold text-muted-foreground">ACCEL X</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={customAx}
+                  onChange={e => setCustomAx(e.target.value)}
+                  className="mt-1 h-8 w-full rounded border border-border bg-background px-2 font-mono text-xs outline-none focus:border-primary"
+                />
+              </label>
+              <label>
+                <span className="text-[9px] font-semibold text-muted-foreground">ACCEL Y</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={customAy}
+                  onChange={e => setCustomAy(e.target.value)}
+                  className="mt-1 h-8 w-full rounded border border-border bg-background px-2 font-mono text-xs outline-none focus:border-primary"
+                />
+              </label>
+              <label>
+                <span className="text-[9px] font-semibold text-muted-foreground">ACCEL Z</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={customAz}
+                  onChange={e => setCustomAz(e.target.value)}
+                  className="mt-1 h-8 w-full rounded border border-border bg-background px-2 font-mono text-xs outline-none focus:border-primary"
+                />
+              </label>
+            </div>
+            <div className="mt-3 flex justify-end">
+              <button
+                type="submit"
+                className="inline-flex h-8 items-center gap-1.5 rounded bg-primary px-3 text-xs font-bold text-primary-foreground hover:brightness-110"
+              >
+                <Send className="h-3.5 w-3.5" /> Send Telemetry to API
+              </button>
+            </div>
           </form>
         </div>
 
@@ -1138,7 +1439,7 @@ function Esp32TestPanel({
             {curlCommand}
           </pre>
           <p className="mt-2 text-[9px] text-muted-foreground">
-            Expected JSON format: <code className="font-mono text-primary">&#123;&quot;deviceId&quot;:&quot;WN-001&quot;,&quot;temperature&quot;:27.4,&quot;humidity&quot;:53&#125;</code>
+            Expected JSON format: <code className="font-mono text-primary">&#123;&quot;deviceId&quot;:&quot;WN-001&quot;,&quot;temperature&quot;:28.4,&quot;humidity&quot;:65.2,&quot;accelerationX&quot;:0.12,&quot;accelerationY&quot;:-0.04,&quot;accelerationZ&quot;:9.81&#125;</code>
           </p>
         </div>
       </div>
@@ -1325,12 +1626,16 @@ function ShipmentDetail({
               <span className="rounded-lg border border-primary/20 bg-primary/10 p-2.5 text-primary">
                 <Cpu className="h-4 w-4" />
               </span>
-              <span>
+              <div>
                 <span className="block text-[9px] font-semibold tracking-wider text-muted-foreground">
                   MONITORING DEVICE
                 </span>
-                <span className="mt-1 block font-mono text-xs font-semibold">{shipment.deviceId}</span>
-              </span>
+                <span className="mt-0.5 block font-mono text-xs font-semibold">{shipment.deviceId}</span>
+                <span className="mt-1 inline-flex items-center gap-1 rounded border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 font-mono text-[9px] font-bold text-emerald-300">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  MPU6050: CONNECTED
+                </span>
+              </div>
             </span>
             <ChevronRight className="h-4 w-4 text-muted-foreground" />
           </button>
@@ -1367,6 +1672,7 @@ function ShipmentDetail({
         </div>
       )}
 
+      {/* Monitoring Condition Cards */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <ConditionCard
           label="CURRENT TEMPERATURE"
@@ -1388,21 +1694,128 @@ function ShipmentDetail({
           icon={Gauge}
           foot="Modular Wanees threshold engine"
         />
-        <button
-          onClick={() => onDevice(shipment.deviceId)}
-          className="rounded-xl border border-border bg-card p-4 text-left transition-colors hover:border-primary/40"
-        >
+        <div className="rounded-xl border border-border bg-card p-4 text-left transition-colors hover:border-primary/40">
           <div className="flex items-center justify-between">
-            <span className="text-[9px] font-semibold tracking-[0.12em] text-muted-foreground">DEVICE LINK</span>
+            <span className="text-[9px] font-semibold tracking-[0.12em] text-muted-foreground">
+              {shipment.source === 'real' ? 'PHYSICAL WANEES BOX' : 'DEVICE STATUS'}
+            </span>
             <Wifi className="h-4 w-4 text-emerald-300" />
           </div>
-          <p className="mt-3 font-mono text-lg font-semibold">ONLINE</p>
-          <p className="mt-2 flex items-center gap-1 text-[10px] text-primary">
-            {shipment.deviceId} <ArrowRight className="h-3 w-3" />
-          </p>
-        </button>
+          <p className="mt-2 font-mono text-lg font-semibold text-foreground">ONLINE</p>
+          <div className="mt-1.5">
+            <span className="inline-flex items-center gap-1.5 rounded border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 font-mono text-[10px] font-bold text-emerald-300">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              MPU6050: CONNECTED
+            </span>
+          </div>
+          <button
+            onClick={() => onDevice(shipment.deviceId)}
+            className="mt-2 flex items-center gap-1 text-[10px] text-primary hover:underline"
+          >
+            {shipment.deviceId} · Inspect unit <ArrowRight className="h-3 w-3" />
+          </button>
+        </div>
       </div>
 
+      {/* MOTION & MOVEMENT (MPU6050) - Directly below monitoring cards */}
+      <Panel className="p-5 sm:p-6 border-primary/30 shadow-lg">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 pb-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="rounded-lg border border-primary/20 bg-primary/10 p-2 text-primary">
+                <Activity className="h-4 w-4" />
+              </span>
+              <h3 className="text-base font-bold tracking-tight text-foreground">MOTION &amp; MOVEMENT</h3>
+              <span className="inline-flex items-center gap-1 rounded border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 font-mono text-[9px] font-bold text-emerald-300">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                MPU6050: CONNECTED
+              </span>
+              <SourceBadge source={shipment.source} />
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Real-time 3-axis inertial acceleration monitoring for transit movement and shock events.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <MovementBadge
+              status={shipment.reading.movement?.status}
+              label={shipment.reading.movement?.statusLabel}
+            />
+          </div>
+        </div>
+
+        {/* Three live cards: Acceleration X, Y, Z — m/s² */}
+        <div className="mt-5 grid gap-4 sm:grid-cols-3">
+          <div className="rounded-xl border border-sky-400/25 bg-sky-400/[0.05] p-4 transition-colors hover:border-sky-400/40">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold tracking-wider text-sky-400">ACCELERATION X</span>
+              <span className="h-2 w-2 rounded-full bg-sky-400" />
+            </div>
+            <p className="mt-2 font-mono text-3xl font-extrabold text-foreground">
+              {(shipment.reading.accelerationX ?? 0).toFixed(2)}{' '}
+              <span className="text-sm font-normal text-muted-foreground">m/s²</span>
+            </p>
+            <p className="mt-1 text-[10px] text-muted-foreground">Lateral / side motion axis</p>
+          </div>
+
+          <div className="rounded-xl border border-purple-400/25 bg-purple-400/[0.05] p-4 transition-colors hover:border-purple-400/40">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold tracking-wider text-purple-400">ACCELERATION Y</span>
+              <span className="h-2 w-2 rounded-full bg-purple-400" />
+            </div>
+            <p className="mt-2 font-mono text-3xl font-extrabold text-foreground">
+              {(shipment.reading.accelerationY ?? 0).toFixed(2)}{' '}
+              <span className="text-sm font-normal text-muted-foreground">m/s²</span>
+            </p>
+            <p className="mt-1 text-[10px] text-muted-foreground">Longitudinal / front-back axis</p>
+          </div>
+
+          <div className="rounded-xl border border-amber-400/25 bg-amber-400/[0.05] p-4 transition-colors hover:border-amber-400/40">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold tracking-wider text-amber-400">ACCELERATION Z</span>
+              <span className="h-2 w-2 rounded-full bg-amber-400" />
+            </div>
+            <p className="mt-2 font-mono text-3xl font-extrabold text-foreground">
+              {(shipment.reading.accelerationZ ?? 9.81).toFixed(2)}{' '}
+              <span className="text-sm font-normal text-muted-foreground">m/s²</span>
+            </p>
+            <p className="mt-1 text-[10px] text-muted-foreground">Vertical axis (includes ~9.81 m/s² 1G baseline)</p>
+          </div>
+        </div>
+
+        {/* Movement Status sub-section */}
+        <div className="mt-5 rounded-xl border border-border/80 bg-secondary/30 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-xs font-bold uppercase tracking-wider text-foreground">Movement Status:</span>
+              <MovementBadge
+                status={shipment.reading.movement?.status}
+                label={shipment.reading.movement?.statusLabel}
+              />
+              <span className="font-mono text-xs text-muted-foreground">
+                (Magnitude: {(shipment.reading.movement?.magnitude ?? 9.81).toFixed(2)} m/s²)
+              </span>
+            </div>
+            <span className="rounded bg-secondary/80 px-2 py-0.5 text-[9px] text-muted-foreground">
+              Real-time threshold engine
+            </span>
+          </div>
+          <p className="mt-2 text-xs font-medium text-foreground/90">
+            {shipment.reading.movement?.description || 'Normal acceleration within steady baseline.'}
+          </p>
+        </div>
+
+        {/* 3-Axis Motion History sub-section */}
+        <div className="mt-5">
+          <div className="mb-2 flex items-center justify-between">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">3-AXIS MOTION HISTORY</h4>
+            <span className="text-[10px] text-muted-foreground">Live telemetry (polling 2s)</span>
+          </div>
+          <MovementChart shipment={shipment} />
+        </div>
+      </Panel>
+
+      {/* Temperature & Humidity Monitoring History */}
       <div className="grid gap-4 lg:grid-cols-2">
         <SensorChart shipment={shipment} kind="temperature" />
         <SensorChart shipment={shipment} kind="humidity" />
@@ -1596,10 +2009,20 @@ function DeviceDetail({
               : 'Virtual simulated telemetry device'}
           </p>
         </div>
-        <span className="inline-flex items-center gap-2 rounded-md border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-[10px] font-bold tracking-wide text-emerald-300">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-          ONLINE
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 font-mono text-[10px] font-bold tracking-wide text-emerald-300">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            MPU6050: Connected
+          </span>
+          <MovementBadge
+            status={shipment?.reading.movement?.status}
+            label={shipment?.reading.movement?.statusLabel}
+          />
+          <span className="inline-flex items-center gap-2 rounded-md border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-[10px] font-bold tracking-wide text-emerald-300">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            ONLINE
+          </span>
+        </div>
       </div>
 
       <Panel className="p-5 sm:p-6">
@@ -1622,18 +2045,24 @@ function DeviceDetail({
           <LiveDot label={device.source === 'real' ? 'ESP32 ONLINE' : 'SIMULATION ACTIVE'} />
         </div>
 
-        <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <ConditionCard
             label="TEMPERATURE"
             value={shipment ? `${shipment.reading.temperature.toFixed(1)}°C` : '—'}
             icon={Thermometer}
-            foot={device.source === 'real' ? 'Real sensor reading' : 'Simulated reading'}
+            foot={device.source === 'real' ? 'Real DHT22 reading' : 'Simulated reading'}
           />
           <ConditionCard
             label="HUMIDITY"
             value={shipment ? `${shipment.reading.humidity}%` : '—'}
             icon={Globe2}
-            foot={device.source === 'real' ? 'Real sensor reading' : 'Simulated reading'}
+            foot={device.source === 'real' ? 'Real DHT22 reading' : 'Simulated reading'}
+          />
+          <ConditionCard
+            label="MOTION STATUS"
+            value={shipment?.reading.movement?.statusLabel ?? 'Normal'}
+            icon={Activity}
+            foot={device.source === 'real' ? 'Real MPU6050 reading' : 'Simulated MPU6050'}
           />
           <ConditionCard
             label="BATTERY LEVEL"
@@ -1649,11 +2078,15 @@ function DeviceDetail({
           />
         </div>
 
-        <div className="mt-5 grid gap-3 border-t border-border pt-5 sm:grid-cols-3">
+        <div className="mt-5 grid gap-3 border-t border-border pt-5 sm:grid-cols-4">
           <InfoLine label="LAST SEEN" value={device.lastSeen} />
           <InfoLine
             label="TELEMETRY PIPELINE"
             value={device.source === 'real' ? 'POST /api/device/data (Wi-Fi)' : 'In-Memory Simulation'}
+          />
+          <InfoLine
+            label="HARDWARE SENSORS"
+            value={device.source === 'real' ? 'DHT22 + MPU6050: Connected' : 'Simulated Sensor Suite'}
           />
           <InfoLine label="DEVICE STATUS" value={device.status} />
         </div>
