@@ -1,7 +1,7 @@
 // Serverless Function / API Endpoint: /api/device/data
 // Handles real ESP32 / Wokwi hardware telemetry (POST) and status queries (GET).
 
-export type RiskLevel = 'SAFE' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+export type RiskLevel = 'SAFE' | 'WARNING' | 'CRITICAL' | 'MEDIUM' | 'HIGH';
 export type DeviceStatus = 'ONLINE' | 'OFFLINE' | 'SLEEP' | 'WARNING' | 'ERROR';
 export type DataSource = 'real' | 'simulation';
 
@@ -19,12 +19,31 @@ export interface MovementData {
   description: string;
 }
 
+export const ESP32_THRESHOLDS = {
+  TEMPERATURE: {
+    NORMAL_MIN: 10.0,
+    NORMAL_MAX: 13.0,
+    WARNING_LOW_MIN: 8.0,
+    WARNING_HIGH_MAX: 15.0,
+  },
+  HUMIDITY: {
+    NORMAL_MIN: 85.0,
+    NORMAL_MAX: 95.0,
+    WARNING_LOW_MIN: 80.0,
+    WARNING_HIGH_MAX: 97.0,
+  },
+  SHOCK: {
+    NORMAL_MAX: 1.5,
+    WARNING_MAX: 3.0,
+  },
+};
+
 export const MOVEMENT_THRESHOLDS = {
-  GRAVITY_BASELINE: 9.81, // Earth standard gravity (m/s²)
-  MOVEMENT_DEVIATION: 1.2, // Deviation threshold indicating active shipment movement/vibration
-  SHOCK_DEVIATION: 6.0,    // High deviation threshold indicating physical impact/shock
-  HORIZONTAL_MOVEMENT: 1.2, // Horizontal tilt/displacement threshold
-  HORIZONTAL_SHOCK: 5.5,   // Horizontal impact threshold
+  GRAVITY_BASELINE: 9.81,
+  MOVEMENT_DEVIATION: 1.2,
+  SHOCK_DEVIATION: 6.0,
+  HORIZONTAL_MOVEMENT: 1.2,
+  HORIZONTAL_SHOCK: 5.5,
 };
 
 export interface ActuatorState {
@@ -73,61 +92,84 @@ export interface DeviceTelemetryRecord {
   metadata?: Record<string, any>;
 }
 
+export function getTemperatureStatus(temp: number): 'SAFE' | 'WARNING' | 'CRITICAL' {
+  if (temp < 8.0 || temp > 15.0) return 'CRITICAL';
+  if ((temp >= 8.0 && temp < 10.0) || (temp > 13.0 && temp <= 15.0)) return 'WARNING';
+  return 'SAFE';
+}
+
+export function getHumidityStatus(hum: number): 'SAFE' | 'WARNING' | 'CRITICAL' {
+  if (hum < 80.0 || hum > 97.0) return 'CRITICAL';
+  if ((hum >= 80.0 && hum < 85.0) || (hum > 95.0 && hum <= 97.0)) return 'WARNING';
+  return 'SAFE';
+}
+
+export function getShockStatus(shockG: number): 'SAFE' | 'WARNING' | 'CRITICAL' {
+  if (shockG >= 3.0) return 'CRITICAL';
+  if (shockG >= 1.5) return 'WARNING';
+  return 'SAFE';
+}
+
+export function calculateRisk(
+  temperature: number,
+  humidity: number,
+  shockG: number = 0.98
+): RiskLevel {
+  const t = getTemperatureStatus(temperature);
+  const h = getHumidityStatus(humidity);
+  const s = getShockStatus(shockG);
+  if (t === 'CRITICAL' || h === 'CRITICAL' || s === 'CRITICAL') return 'CRITICAL';
+  if (t === 'WARNING' || h === 'WARNING' || s === 'WARNING') return 'WARNING';
+  return 'SAFE';
+}
+
 export function computeMovementStatus(
   ax?: number,
   ay?: number,
-  az?: number
+  az?: number,
+  explicitShockG?: number
 ): MovementData | undefined {
-  if (ax === undefined || ay === undefined || az === undefined) {
+  let shockG = 0.98;
+  const axVal = ax ?? 0.0;
+  const ayVal = ay ?? 0.0;
+  const azVal = az ?? 9.81;
+
+  if (explicitShockG !== undefined && !isNaN(explicitShockG)) {
+    shockG = Math.round(explicitShockG * 100) / 100;
+  } else if (ax !== undefined && ay !== undefined && az !== undefined) {
+    const magnitude = Math.sqrt(ax * ax + ay * ay + az * az);
+    shockG = Math.round((magnitude / 9.80665) * 100) / 100;
+  } else if (explicitShockG === undefined && ax === undefined) {
     return undefined;
   }
 
-  const magnitude = Math.sqrt(ax * ax + ay * ay + az * az);
-  const deviation = Math.abs(magnitude - MOVEMENT_THRESHOLDS.GRAVITY_BASELINE);
-  const horizMax = Math.max(Math.abs(ax), Math.abs(ay));
-  const excessDev = Math.max(deviation, horizMax);
-
-  let status: MovementStatus = 'NORMAL';
-  let statusLabel: 'Normal' | 'Movement detected' | 'Shock detected' = 'Normal';
+  const magnitude = Math.sqrt(axVal * axVal + ayVal * ayVal + azVal * azVal);
+  let status: MovementStatus;
+  let statusLabel: 'Normal' | 'Movement detected' | 'Shock detected';
   let userStatus: string;
-  let shockG: number;
   let description: string;
 
-  if (deviation >= MOVEMENT_THRESHOLDS.SHOCK_DEVIATION || horizMax >= MOVEMENT_THRESHOLDS.HORIZONTAL_SHOCK) {
+  if (shockG >= 3.0) {
     status = 'SHOCK_DETECTED';
     statusLabel = 'Shock detected';
-    const shockFactor = 3.5 + ((excessDev - MOVEMENT_THRESHOLDS.SHOCK_DEVIATION) / 4.0) * 3.5;
-    shockG = Math.round(Math.min(15.0, Math.max(3.5, shockFactor)) * 10) / 10;
-    if (shockG >= 6.0) {
-      userStatus = 'Critical impact';
-      description = `Critical physical impact detected (${shockG.toFixed(1)} g). Urgent inspection advised.`;
-    } else {
-      userStatus = 'Strong impact detected';
-      description = `Strong shock detected (${shockG.toFixed(1)} g). Cargo may have experienced harsh handling.`;
-    }
-  } else if (deviation >= MOVEMENT_THRESHOLDS.MOVEMENT_DEVIATION || horizMax >= MOVEMENT_THRESHOLDS.HORIZONTAL_MOVEMENT) {
+    userStatus = shockG >= 5.0 ? 'Critical impact' : 'Strong impact detected';
+    description = `Critical physical impact detected (${shockG.toFixed(2)} g). Immediate inspection advised.`;
+  } else if (shockG >= 1.5) {
     status = 'MOVEMENT_DETECTED';
     statusLabel = 'Movement detected';
-    const moveFactor = 1.0 + ((excessDev - MOVEMENT_THRESHOLDS.MOVEMENT_DEVIATION) / (MOVEMENT_THRESHOLDS.SHOCK_DEVIATION - MOVEMENT_THRESHOLDS.MOVEMENT_DEVIATION)) * 1.5;
-    shockG = Math.round(Math.max(1.0, Math.min(2.9, moveFactor)) * 10) / 10;
-    if (shockG >= 2.0) {
-      userStatus = 'Moderate impact';
-      description = `Moderate impact detected (${shockG.toFixed(1)} g). Transit vibration recorded.`;
-    } else {
-      userStatus = 'Movement detected';
-      description = `Active movement detected (${shockG.toFixed(1)} g). Shipment in transit.`;
-    }
+    userStatus = 'Movement detected';
+    description = `Active movement / moderate impact detected (${shockG.toFixed(2)} g). Transit vibration recorded.`;
   } else {
-    const normFactor = 0.2 + (excessDev / MOVEMENT_THRESHOLDS.MOVEMENT_DEVIATION) * 0.4;
-    shockG = Math.round(Math.max(0.1, Math.min(0.8, normFactor)) * 10) / 10;
+    status = 'NORMAL';
+    statusLabel = 'Normal';
     userStatus = 'Normal handling';
-    description = 'Cargo handling is steady and within normal transport limits.';
+    description = 'Cargo handling is steady and within normal transport limits (<1.5 g).';
   }
 
   return {
-    accelerationX: Math.round(ax * 100) / 100,
-    accelerationY: Math.round(ay * 100) / 100,
-    accelerationZ: Math.round(az * 100) / 100,
+    accelerationX: Math.round(axVal * 100) / 100,
+    accelerationY: Math.round(ayVal * 100) / 100,
+    accelerationZ: Math.round(azVal * 100) / 100,
     magnitude: Math.round(magnitude * 100) / 100,
     shockG,
     status,
@@ -139,54 +181,68 @@ export function computeMovementStatus(
 
 export function computeRiskAssessment(
   temp: number,
-  humidity: number,
+  hum: number,
+  shockG: number = 0.98,
   overrideRisk?: string
 ): RiskAssessment {
-  if (overrideRisk && ['SAFE', 'MEDIUM', 'HIGH', 'CRITICAL'].includes(overrideRisk.toUpperCase())) {
-    const level = overrideRisk.toUpperCase() as RiskLevel;
-    const scores: Record<RiskLevel, number> = { SAFE: 10, MEDIUM: 45, HIGH: 75, CRITICAL: 95 };
+  if (overrideRisk && ['SAFE', 'WARNING', 'CRITICAL', 'MEDIUM', 'HIGH'].includes(overrideRisk.toUpperCase())) {
+    const raw = overrideRisk.toUpperCase();
+    const level: RiskLevel = raw === 'MEDIUM' || raw === 'HIGH' ? 'WARNING' : (raw as RiskLevel);
+    const scores: Record<string, number> = { SAFE: 10, WARNING: 50, MEDIUM: 50, HIGH: 70, CRITICAL: 95 };
     return {
       level,
-      score: scores[level],
-      factors: [`Manual risk override set to ${level}`],
+      score: scores[raw] ?? 50,
+      factors: [`Status override set to ${level}`],
     };
   }
 
   const factors: string[] = [];
   let score = 0;
 
-  if (temp >= 35) {
-    factors.push(`Critical temperature threshold exceeded: ${temp.toFixed(1)}°C (safe < 29°C)`);
-    score += 55;
-  } else if (temp >= 32) {
-    factors.push(`Elevated temperature detected: ${temp.toFixed(1)}°C`);
-    score += 40;
-  } else if (temp >= 29) {
-    factors.push(`Moderate temperature advisory: ${temp.toFixed(1)}°C`);
+  const tStatus = getTemperatureStatus(temp);
+  if (tStatus === 'CRITICAL') {
+    factors.push(`Critical temperature: ${temp.toFixed(1)}°C outside critical limits (<8.0°C or >15.0°C)`);
+    score += 45;
+  } else if (tStatus === 'WARNING') {
+    factors.push(`Temperature warning: ${temp.toFixed(1)}°C outside normal bounds (10.0°C–13.0°C)`);
     score += 25;
   } else {
-    factors.push(`Temperature within safe limits: ${temp.toFixed(1)}°C`);
+    factors.push(`Temperature nominal: ${temp.toFixed(1)}°C within safe cold chain range (10.0°C–13.0°C)`);
     score += 5;
   }
 
-  if (humidity >= 80) {
-    factors.push(`Critical humidity threshold exceeded: ${humidity}% (safe < 71%)`);
-    score += 45;
-  } else if (humidity >= 76) {
-    factors.push(`High humidity warning: ${humidity}%`);
-    score += 35;
-  } else if (humidity >= 71) {
-    factors.push(`Moderate humidity advisory: ${humidity}%`);
+  const hStatus = getHumidityStatus(hum);
+  if (hStatus === 'CRITICAL') {
+    factors.push(`Critical humidity: ${hum}% outside critical limits (<80% or >97%)`);
+    score += 40;
+  } else if (hStatus === 'WARNING') {
+    factors.push(`Humidity warning: ${hum}% outside normal bounds (85%–95%)`);
     score += 20;
   } else {
-    factors.push(`Humidity within safe limits: ${humidity}%`);
+    factors.push(`Humidity nominal: ${hum}% within safe range (85%–95%)`);
     score += 5;
   }
 
-  let level: RiskLevel = 'SAFE';
-  if (temp >= 35 || humidity >= 80) level = 'CRITICAL';
-  else if (temp >= 32 || humidity >= 76) level = 'HIGH';
-  else if (temp >= 29 || humidity >= 71) level = 'MEDIUM';
+  const sStatus = getShockStatus(shockG);
+  if (sStatus === 'CRITICAL') {
+    factors.push(`Critical shock detected: ${shockG.toFixed(2)} g exceeds critical threshold (>=3.0 g)`);
+    score += 50;
+  } else if (sStatus === 'WARNING') {
+    factors.push(`Shock warning: ${shockG.toFixed(2)} g in warning range (1.5 g–<3.0 g)`);
+    score += 25;
+  } else {
+    factors.push(`Shock nominal: ${shockG.toFixed(2)} g within safe handling limits (<1.5 g)`);
+    score += 5;
+  }
+
+  let level: RiskLevel;
+  if (tStatus === 'CRITICAL' || hStatus === 'CRITICAL' || sStatus === 'CRITICAL') {
+    level = 'CRITICAL';
+  } else if (tStatus === 'WARNING' || hStatus === 'WARNING' || sStatus === 'WARNING') {
+    level = 'WARNING';
+  } else {
+    level = 'SAFE';
+  }
 
   return {
     level,
@@ -216,20 +272,14 @@ export function computeActuators(risk: RiskLevel, status: DeviceStatus): Actuato
         stateSummary: 'CRITICAL ALERT: Red LED Active & Alarm Buzzer Sounding',
       };
     case 'HIGH':
-      return {
-        ledGreen: false,
-        ledYellow: false,
-        ledRed: true,
-        buzzer: false,
-        stateSummary: 'HIGH RISK: Red Warning LED Active (Buzzer Silent)',
-      };
     case 'MEDIUM':
+    case 'WARNING':
       return {
         ledGreen: false,
         ledYellow: true,
         ledRed: false,
         buzzer: false,
-        stateSummary: 'MEDIUM RISK: Yellow Advisory LED Active',
+        stateSummary: 'WARNING: Yellow Warning LED Active (Buzzer Silent)',
       };
     case 'SAFE':
     default:
@@ -246,21 +296,21 @@ export function computeActuators(risk: RiskLevel, status: DeviceStatus): Actuato
 // In-memory telemetry buffer for serverless runtime
 const deviceStorage = new Map<string, DeviceTelemetryRecord>();
 
-// Seed default physical device baseline (WN-001)
-const initialAssessment = computeRiskAssessment(27.4, 53);
-const initialMovement = computeMovementStatus(0.12, -0.04, 9.81);
+// Seed default physical device baseline (WN-001) matching cold chain ESP32 standards
+const initialMovement = computeMovementStatus(0.05, -0.02, 9.81, 0.98);
+const initialAssessment = computeRiskAssessment(11.8, 89, initialMovement?.shockG ?? 0.98);
 deviceStorage.set('WN-001', {
   deviceId: 'WN-001',
-  temperature: 27.4,
-  humidity: 53,
+  temperature: 11.8,
+  humidity: 89,
   risk: initialAssessment.level,
   deviceStatus: 'ONLINE',
   battery: 98,
   signalStrength: -65,
-  accelerationX: 0.12,
-  accelerationY: -0.04,
+  accelerationX: 0.05,
+  accelerationY: -0.02,
   accelerationZ: 9.81,
-  shockG: initialMovement?.shockG ?? 0.2,
+  shockG: initialMovement?.shockG ?? 0.98,
   movementStatus: initialMovement?.userStatus ?? 'Normal handling',
   movement: initialMovement,
   location: { latitude: 30.0444, longitude: 31.2357 },
@@ -338,23 +388,26 @@ export default async function handler(req: any, res: any) {
         ? (rawStatus as DeviceStatus)
         : 'ONLINE';
 
-      // Calculated Risk Assessment
-      const riskAssessment = computeRiskAssessment(temperature, humidity, body.risk);
-      const risk = riskAssessment.level;
-
-      // Actuator State (LEDs, Buzzer) computed from risk and status
-      const actuators = computeActuators(risk, deviceStatus);
-
       // MPU6050 Motion / Acceleration telemetry (optional, extensible)
       const rawAx = body.accelerationX !== undefined ? (typeof body.accelerationX === 'number' ? body.accelerationX : parseFloat(body.accelerationX)) : undefined;
       const rawAy = body.accelerationY !== undefined ? (typeof body.accelerationY === 'number' ? body.accelerationY : parseFloat(body.accelerationY)) : undefined;
       const rawAz = body.accelerationZ !== undefined ? (typeof body.accelerationZ === 'number' ? body.accelerationZ : parseFloat(body.accelerationZ)) : undefined;
+      const rawShockG = body.shockG !== undefined ? (typeof body.shockG === 'number' ? body.shockG : parseFloat(body.shockG)) : undefined;
 
       const accelerationX = rawAx !== undefined && !isNaN(rawAx) ? Math.round(rawAx * 100) / 100 : undefined;
       const accelerationY = rawAy !== undefined && !isNaN(rawAy) ? Math.round(rawAy * 100) / 100 : undefined;
       const accelerationZ = rawAz !== undefined && !isNaN(rawAz) ? Math.round(rawAz * 100) / 100 : undefined;
+      const explicitShockG = rawShockG !== undefined && !isNaN(rawShockG) ? Math.round(rawShockG * 100) / 100 : undefined;
 
-      const movement = computeMovementStatus(accelerationX, accelerationY, accelerationZ);
+      const movement = computeMovementStatus(accelerationX, accelerationY, accelerationZ, explicitShockG);
+      const shockG = explicitShockG ?? movement?.shockG ?? 0.98;
+
+      // Calculated Risk Assessment matching exact ESP32 thresholds
+      const riskAssessment = computeRiskAssessment(temperature, humidity, shockG, body.risk);
+      const risk = riskAssessment.level;
+
+      // Actuator State (LEDs, Buzzer) computed from risk and status
+      const actuators = computeActuators(risk, deviceStatus);
 
       // Location / GPS handling
       const location: GpsLocation | undefined = body.location
@@ -379,8 +432,8 @@ export default async function handler(req: any, res: any) {
         accelerationX,
         accelerationY,
         accelerationZ,
-        shockG: movement?.shockG ?? 0.2,
-        movementStatus: movement?.userStatus ?? 'Normal handling',
+        shockG,
+        movementStatus: movement?.userStatus ?? (shockG >= 3.0 ? 'Strong impact detected' : shockG >= 1.5 ? 'Movement detected' : 'Normal handling'),
         movement,
         location,
         latitude: location?.latitude ?? body.latitude,

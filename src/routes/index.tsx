@@ -3,20 +3,26 @@ import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 're
 import {
   Activity,
   AlertCircle,
+  AlertTriangle,
   ArrowLeft,
   ArrowRight,
   Battery,
   Bell,
   Check,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
   ChevronUp,
+  Clock,
   Command,
   Copy,
   Cpu,
   Droplets,
+  Filter,
   Gauge,
   Globe2,
+  History,
+  Info,
   LayoutDashboard,
   LogOut,
   MapPin,
@@ -35,10 +41,12 @@ import {
 import {
   alertService,
   authService,
+  defaultUser,
   deviceService,
   mockHistory,
   mockMotionHistory,
   shipmentService,
+  getShockPresentation,
   type Alert,
   type Device,
   type RiskLevel,
@@ -47,7 +55,16 @@ import {
   type MovementStatus,
   type MovementData,
 } from '@/lib/wanees'
-import { waneesDataService } from '@/lib/dataProvider'
+import {
+  waneesDataService,
+  getTemperatureStatus,
+  getHumidityStatus,
+  getShockStatus,
+  ESP32_THRESHOLDS,
+} from '@/lib/dataProvider'
+import { activityLogService, type ActivityEvent, type EventSeverity } from '@/lib/activityLog'
+import { ShockChart } from '@/components/ShockChart'
+import { ActivityLogSection } from '@/components/ActivityLogSection'
 
 export const Route = createFileRoute('/')({
   head: () => ({
@@ -206,63 +223,7 @@ export function CargoConditionBadge({ level, size = 'md' }: { level?: string; si
   )
 }
 
-export function getShockPresentation(shockG?: number, userStatus?: string) {
-  const g = typeof shockG === 'number' && !isNaN(shockG) ? Math.round(shockG * 10) / 10 : 0.2
-
-  if (g >= 6.0 || userStatus === 'Critical impact') {
-    return {
-      value: `${g.toFixed(1)} g`,
-      status: '🔴 Critical impact',
-      rawStatus: 'Critical impact',
-      level: 'critical',
-      badgeClass: 'border-red-400/35 bg-red-400/15 text-red-300',
-      dotClass: 'bg-red-400',
-      description: 'Severe physical impact or drop recorded. Urgent inspection recommended.',
-    }
-  }
-  if (g >= 3.5 || userStatus === 'Strong impact detected') {
-    return {
-      value: `${g.toFixed(1)} g`,
-      status: '⚠️ Strong impact detected',
-      rawStatus: 'Strong impact detected',
-      level: 'strong',
-      badgeClass: 'border-orange-400/35 bg-orange-400/15 text-orange-300',
-      dotClass: 'bg-orange-400',
-      description: 'Strong physical shock detected. Cargo may have experienced harsh handling.',
-    }
-  }
-  if (g >= 1.5 || userStatus === 'Moderate impact') {
-    return {
-      value: `${g.toFixed(1)} g`,
-      status: '⚠️ Moderate impact',
-      rawStatus: 'Moderate impact',
-      level: 'moderate',
-      badgeClass: 'border-amber-400/35 bg-amber-400/15 text-amber-300',
-      dotClass: 'bg-amber-400',
-      description: 'Moderate transit impact recorded. Vibration above normal baseline.',
-    }
-  }
-  if (g >= 0.9 || userStatus === 'Movement detected') {
-    return {
-      value: `${g.toFixed(1)} g`,
-      status: 'Movement detected',
-      rawStatus: 'Movement detected',
-      level: 'movement',
-      badgeClass: 'border-sky-400/35 bg-sky-400/15 text-sky-300',
-      dotClass: 'bg-sky-400',
-      description: 'Active movement detected. Cargo is in normal transit motion.',
-    }
-  }
-  return {
-    value: `${g.toFixed(1)} g`,
-    status: 'Normal handling',
-    rawStatus: 'Normal handling',
-    level: 'normal',
-    badgeClass: 'border-emerald-400/35 bg-emerald-400/15 text-emerald-300',
-    dotClass: 'bg-emerald-400',
-    description: 'Cargo handling is steady and within normal transport limits.',
-  }
-}
+export { getShockPresentation }
 
 const movementStyle: Record<string, string> = {
   NORMAL: 'border-emerald-400/20 bg-emerald-400/10 text-emerald-300',
@@ -452,169 +413,7 @@ function SensorChart({ shipment, kind }: { shipment: Shipment; kind: 'temperatur
 }
 
 function ShockHistoryChart({ shipment }: { shipment: Shipment }) {
-  const motionHistory = mockMotionHistory(shipment)
-  const shockValues = motionHistory.map(m => m.shockG ?? 0.2)
-  const maxShock = Math.max(6.0, ...shockValues) + 0.5
-  const minShock = 0
-  const range = maxShock - minShock || 1
-
-  const getYCoord = (val: number) => 46 - ((val - minShock) / range) * 38
-
-  const points = shockValues
-    .map((v, i) => `${i * (100 / (shockValues.length - 1 || 1))},${getYCoord(v)}`)
-    .join(' ')
-
-  const currentShock = shipment.reading.shockG ?? shockValues[shockValues.length - 1] ?? 0.2
-  const currentStatus = shipment.reading.movementStatus ?? motionHistory[motionHistory.length - 1]?.status ?? 'Normal handling'
-  const shockPres = getShockPresentation(currentShock, currentStatus)
-
-  const strokeColor =
-    shockPres.level === 'critical'
-      ? 'oklch(61% 0.192 25deg)'
-      : shockPres.level === 'strong'
-      ? 'oklch(69% 0.17 45deg)'
-      : shockPres.level === 'moderate'
-      ? 'oklch(79% 0.15 82deg)'
-      : 'oklch(77% 0.15 150deg)'
-
-  const timelineEvents = [...motionHistory].reverse()
-
-  return (
-    <Panel className="p-4 sm:p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <Activity className="h-4 w-4 text-primary" />
-            <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">
-              SHOCK &amp; IMPACT HISTORY
-            </h3>
-            <SourceBadge source={shipment.source} />
-          </div>
-          <p className="mt-1 text-[11px] text-muted-foreground">
-            Physical impact and handling telemetry in g (Safe transport limit: &lt; 1.0 g).
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold ${shockPres.badgeClass}`}>
-            <span className={`h-1.5 w-1.5 rounded-full ${shockPres.dotClass}`} />
-            Current: {shockPres.value}
-          </span>
-        </div>
-      </div>
-
-      <div className="relative mt-4">
-        <div className="flex justify-between text-[9px] font-mono text-muted-foreground/75 px-1 pb-1">
-          <span className="text-muted-foreground">{maxShock.toFixed(1)} g</span>
-          <span className="text-red-400 font-semibold">Impact threshold: 3.5 g</span>
-          <span className="text-emerald-400 font-semibold">Safe zone: &lt; 1.0 g</span>
-        </div>
-
-        <svg
-          viewBox="0 0 100 56"
-          preserveAspectRatio="none"
-          className="h-28 w-full overflow-visible"
-          aria-label="Physical shock over time in g"
-          role="img"
-        >
-          {/* Baseline guides */}
-          <path d="M0 48 H100" stroke="var(--border)" strokeDasharray="1.5 2" strokeWidth=".5" fill="none" />
-          <path
-            d={`M0 ${getYCoord(1.0)} H100`}
-            stroke="rgba(52, 211, 153, 0.4)"
-            strokeDasharray="2 2"
-            strokeWidth=".6"
-            fill="none"
-          />
-          <path
-            d={`M0 ${getYCoord(3.5)} H100`}
-            stroke="rgba(248, 113, 113, 0.5)"
-            strokeDasharray="2 2"
-            strokeWidth=".6"
-            fill="none"
-          />
-
-          {/* Shock Area Gradient fill */}
-          <defs>
-            <linearGradient id={`shock-grad-${shipment.id}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={strokeColor} stopOpacity="0.25" />
-              <stop offset="100%" stopColor={strokeColor} stopOpacity="0.0" />
-            </linearGradient>
-          </defs>
-
-          <polygon
-            points={`0,48 ${points} 100,48`}
-            fill={`url(#shock-grad-${shipment.id})`}
-          />
-
-          <polyline
-            points={points}
-            fill="none"
-            stroke={strokeColor}
-            strokeWidth="1.6"
-            vectorEffect="non-scaling-stroke"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-
-          {shockValues.map((val, idx) => {
-            const x = idx * (100 / (shockValues.length - 1 || 1))
-            const y = getYCoord(val)
-            const ptColor = val >= 3.5 ? 'oklch(61% 0.192 25deg)' : val >= 1.5 ? 'oklch(79% 0.15 82deg)' : 'oklch(77% 0.15 150deg)'
-            return (
-              <circle
-                key={idx}
-                cx={x}
-                cy={y}
-                r={idx === shockValues.length - 1 ? 2.5 : 1.8}
-                fill={ptColor}
-                stroke="var(--background)"
-                strokeWidth="0.8"
-              />
-            )
-          })}
-        </svg>
-
-        <div className="mt-1 flex justify-between font-mono text-[9px] text-muted-foreground">
-          {motionHistory.map((point, idx) => (
-            <span key={idx}>{point.time}</span>
-          ))}
-        </div>
-      </div>
-
-      <div className="mt-5 border-t border-border/70 pt-3.5">
-        <div className="mb-2 flex items-center justify-between">
-          <span className="text-[10px] font-bold tracking-wider text-muted-foreground uppercase">
-            CARGO IMPACT &amp; HANDLING LOG
-          </span>
-          <span className="text-[9px] text-muted-foreground">Time → Shock (g)</span>
-        </div>
-        <div className="divide-y divide-border/60 rounded-lg border border-border/80 bg-background/50 overflow-hidden">
-          {timelineEvents.map((evt, idx) => {
-            const pres = getShockPresentation(evt.shockG, evt.status)
-            return (
-              <div
-                key={idx}
-                className="flex items-center justify-between px-3 py-2 text-xs transition-colors hover:bg-secondary/30"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="font-mono text-[10px] text-muted-foreground w-12">{evt.time}</span>
-                  <span className="font-mono font-bold text-foreground">
-                    {pres.value}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[9px] font-medium ${pres.badgeClass}`}>
-                    <span className={`h-1.5 w-1.5 rounded-full ${pres.dotClass}`} />
-                    {pres.rawStatus}
-                  </span>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-    </Panel>
-  )
+  return <ShockChart shipment={shipment} />
 }
 
 function TechnicalDetailsSection({
@@ -1399,7 +1198,12 @@ function Dashboard({
                 <p className="mt-2 font-mono text-2xl font-extrabold text-foreground">
                   {realShipment.reading.temperature.toFixed(1)}°C
                 </p>
-                <span className="mt-1 block text-[10px] text-muted-foreground">Safe: 18.0–29.0°C</span>
+                <div className="mt-1 flex items-center justify-between text-[10px]">
+                  <span className="text-muted-foreground">Safe: 10.0–13.0°C</span>
+                  <span className={getTemperatureStatus(realShipment.reading.temperature) === 'CRITICAL' ? 'font-bold text-red-400' : getTemperatureStatus(realShipment.reading.temperature) === 'WARNING' ? 'font-bold text-amber-300' : 'text-emerald-400 font-medium'}>
+                    {getTemperatureStatus(realShipment.reading.temperature)}
+                  </span>
+                </div>
               </div>
 
               <div className="rounded-lg border border-border/80 bg-background/60 p-3.5">
@@ -1410,7 +1214,12 @@ function Dashboard({
                 <p className="mt-2 font-mono text-2xl font-extrabold text-foreground">
                   {realShipment.reading.humidity}%
                 </p>
-                <span className="mt-1 block text-[10px] text-muted-foreground">Safe: 50–70% RH</span>
+                <div className="mt-1 flex items-center justify-between text-[10px]">
+                  <span className="text-muted-foreground">Safe: 85–95% RH</span>
+                  <span className={getHumidityStatus(realShipment.reading.humidity) === 'CRITICAL' ? 'font-bold text-red-400' : getHumidityStatus(realShipment.reading.humidity) === 'WARNING' ? 'font-bold text-amber-300' : 'text-emerald-400 font-medium'}>
+                    {getHumidityStatus(realShipment.reading.humidity)}
+                  </span>
+                </div>
               </div>
 
               <div className={`rounded-lg border p-3.5 ${
@@ -1429,9 +1238,12 @@ function Dashboard({
                 <p className="mt-2 font-mono text-2xl font-extrabold text-foreground">
                   {realShock.value}
                 </p>
-                <span className="mt-1 block text-[10px] font-semibold text-foreground truncate">
-                  {realShock.status}
-                </span>
+                <div className="mt-1 flex items-center justify-between text-[10px]">
+                  <span className="font-semibold text-foreground truncate">
+                    {realShock.status}
+                  </span>
+                  <span className="text-muted-foreground">Safe: &lt; 1.5 g</span>
+                </div>
               </div>
 
               <div className="rounded-lg border border-border/80 bg-background/60 p-3.5">
@@ -1482,8 +1294,13 @@ function Dashboard({
             </div>
 
             {/* Shock & Impact History Chart */}
-            <div className="mt-4">
+            <div className="mt-5">
               <ShockHistoryChart shipment={realShipment} />
+            </div>
+
+            {/* Activity Log & Event Timeline */}
+            <div className="mt-5">
+              <ActivityLogSection shipmentId={realShipment.id} />
             </div>
 
             {/* Collapsed Technical Details */}
@@ -1684,10 +1501,10 @@ function Esp32TestPanel({
     az?: number
   ) => Promise<void>
 }) {
-  const [customTemp, setCustomTemp] = useState('27.4')
-  const [customHum, setCustomHum] = useState('53')
-  const [customAx, setCustomAx] = useState('0.0')
-  const [customAy, setCustomAy] = useState('0.0')
+  const [customTemp, setCustomTemp] = useState('11.8')
+  const [customHum, setCustomHum] = useState('89')
+  const [customAx, setCustomAx] = useState('0.05')
+  const [customAy, setCustomAy] = useState('-0.02')
   const [customAz, setCustomAz] = useState('9.81')
   const [copied, setCopied] = useState(false)
 
@@ -1709,7 +1526,7 @@ function Esp32TestPanel({
     const ay = parseFloat(customAy)
     const az = parseFloat(customAz)
     if (!isNaN(t) && !isNaN(h)) {
-      onSendTelemetry(t, h, undefined, isNaN(ax) ? 0.0 : ax, isNaN(ay) ? 0.0 : ay, isNaN(az) ? 9.81 : az)
+      onSendTelemetry(t, h, undefined, isNaN(ax) ? 0.05 : ax, isNaN(ay) ? -0.02 : ay, isNaN(az) ? 9.81 : az)
     }
   }
 
@@ -1736,7 +1553,7 @@ function Esp32TestPanel({
             </span>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            Test the live physical device pipeline before or during the hackathon demo. Transmits real JSON to{' '}
+            Test the live physical device pipeline with the active ESP32 thresholds. Transmits real JSON to{' '}
             <code className="rounded bg-secondary px-1 text-primary font-mono text-[10px]">POST /api/device/data</code>.
           </p>
         </div>
@@ -1748,39 +1565,39 @@ function Esp32TestPanel({
       <div className="mt-4 grid gap-5 lg:grid-cols-2">
         <div>
           <p className="text-[10px] font-bold tracking-wider text-muted-foreground uppercase">
-            TELEMETRY TEST PRESETS (CONVERTS INTERNALLY TO SHOCK IN g)
+            ESP32 THRESHOLD PRESETS (TEMP: 10–13°C · HUM: 85–95% · SHOCK: &lt;1.5g)
           </p>
           <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
             <button
-              onClick={() => applyPreset(27.4, 53, 0.0, 0.0, 9.81, 'SAFE')}
+              onClick={() => applyPreset(11.8, 89, 0.05, -0.02, 9.81, 'SAFE')}
               className="flex flex-col items-center rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-2 text-center transition hover:bg-emerald-400/20"
             >
-              <span className="font-mono text-[11px] font-bold text-emerald-300">27.4°C / 53%</span>
-              <span className="mt-0.5 font-mono text-[9px] text-emerald-400 font-semibold">0.2 g · Normal</span>
+              <span className="font-mono text-[11px] font-bold text-emerald-300">11.8°C / 89%</span>
+              <span className="mt-0.5 font-mono text-[9px] text-emerald-400 font-semibold">0.98 g · Normal</span>
               <span className="mt-1 text-[8px] font-bold text-emerald-400">● SAFE</span>
             </button>
             <button
-              onClick={() => applyPreset(28.5, 58, 1.85, -1.20, 10.45, 'MEDIUM')}
-              className="flex flex-col items-center rounded-lg border border-sky-400/30 bg-sky-400/10 p-2 text-center transition hover:bg-sky-400/20"
+              onClick={() => applyPreset(14.2, 83, 1.85, -1.20, 10.45, 'WARNING')}
+              className="flex flex-col items-center rounded-lg border border-amber-400/30 bg-amber-400/10 p-2 text-center transition hover:bg-amber-400/20"
             >
-              <span className="font-mono text-[11px] font-bold text-sky-200">28.5°C / 58%</span>
-              <span className="mt-0.5 font-mono text-[9px] text-sky-300 font-semibold">1.1 g · Movement</span>
-              <span className="mt-1 text-[8px] font-bold text-sky-300">▲ TRANSIT</span>
+              <span className="font-mono text-[11px] font-bold text-amber-200">14.2°C / 83%</span>
+              <span className="mt-0.5 font-mono text-[9px] text-amber-300 font-semibold">1.75 g · Warning</span>
+              <span className="mt-1 text-[8px] font-bold text-amber-300">⚠️ WARNING</span>
             </button>
             <button
-              onClick={() => applyPreset(29.2, 62, 4.80, -2.10, 12.80, 'HIGH')}
+              onClick={() => applyPreset(14.8, 96, 2.20, -1.50, 11.80, 'WARNING')}
               className="flex flex-col items-center rounded-lg border border-orange-400/30 bg-orange-400/10 p-2 text-center transition hover:bg-orange-400/20"
             >
-              <span className="font-mono text-[11px] font-bold text-orange-200">29.2°C / 62%</span>
-              <span className="mt-0.5 font-mono text-[9px] text-orange-300 font-semibold">4.8 g · Strong Impact</span>
+              <span className="font-mono text-[11px] font-bold text-orange-200">14.8°C / 96%</span>
+              <span className="mt-0.5 font-mono text-[9px] text-orange-300 font-semibold">2.20 g · Moderate</span>
               <span className="mt-1 text-[8px] font-bold text-orange-300">⚠️ WARNING</span>
             </button>
             <button
-              onClick={() => applyPreset(35.8, 82, 8.50, -6.20, 19.50, 'CRITICAL')}
+              onClick={() => applyPreset(16.5, 76, 4.80, -2.10, 14.50, 'CRITICAL')}
               className="flex flex-col items-center rounded-lg border border-red-400/30 bg-red-400/10 p-2 text-center transition hover:bg-red-400/20"
             >
-              <span className="font-mono text-[11px] font-bold text-red-300">35.8°C / 82%</span>
-              <span className="mt-0.5 font-mono text-[9px] text-red-400 font-semibold">8.2 g · Critical Impact</span>
+              <span className="font-mono text-[11px] font-bold text-red-300">16.5°C / 76%</span>
+              <span className="mt-0.5 font-mono text-[9px] text-red-400 font-semibold">3.40 g · Critical</span>
               <span className="mt-1 text-[8px] font-bold text-red-400">🔴 CRITICAL</span>
             </button>
           </div>
@@ -1866,7 +1683,7 @@ function Esp32TestPanel({
             {curlCommand}
           </pre>
           <p className="mt-2 text-[9px] text-muted-foreground">
-            Expected JSON format: <code className="font-mono text-primary">&#123;&quot;deviceId&quot;:&quot;WN-001&quot;,&quot;temperature&quot;:28.4,&quot;humidity&quot;:65.2,&quot;accelerationX&quot;:0.12,&quot;accelerationY&quot;:-0.04,&quot;accelerationZ&quot;:9.81&#125;</code>
+            Expected JSON format: <code className="font-mono text-primary">&#123;&quot;deviceId&quot;:&quot;WN-001&quot;,&quot;temperature&quot;:11.8,&quot;humidity&quot;:89.0,&quot;accelerationX&quot;:0.05,&quot;accelerationY&quot;:-0.02,&quot;accelerationZ&quot;:9.81&#125;</code>
           </p>
         </div>
       </div>
@@ -2085,9 +1902,9 @@ function ShipmentDetail({
             {shipment.reading.temperature.toFixed(1)}°C
           </p>
           <div className="mt-2 flex items-center justify-between text-[10px]">
-            <span className="text-muted-foreground">Safe: 18.0–29.0°C</span>
-            <span className={shipment.reading.temperature >= 29 ? 'font-bold text-amber-300' : 'text-emerald-400 font-medium'}>
-              {shipment.reading.temperature >= 35 ? 'Critical' : shipment.reading.temperature >= 29 ? 'Elevated' : 'Optimal'}
+            <span className="text-muted-foreground">Safe: 10.0–13.0°C</span>
+            <span className={getTemperatureStatus(shipment.reading.temperature) === 'CRITICAL' ? 'font-bold text-red-400' : getTemperatureStatus(shipment.reading.temperature) === 'WARNING' ? 'font-bold text-amber-300' : 'text-emerald-400 font-medium'}>
+              {getTemperatureStatus(shipment.reading.temperature)}
             </span>
           </div>
         </Panel>
@@ -2104,9 +1921,9 @@ function ShipmentDetail({
             {shipment.reading.humidity}%
           </p>
           <div className="mt-2 flex items-center justify-between text-[10px]">
-            <span className="text-muted-foreground">Safe: 50–70% RH</span>
-            <span className={shipment.reading.humidity >= 71 ? 'font-bold text-amber-300' : 'text-emerald-400 font-medium'}>
-              {shipment.reading.humidity >= 80 ? 'Critical' : shipment.reading.humidity >= 71 ? 'Elevated' : 'Optimal'}
+            <span className="text-muted-foreground">Safe: 85–95% RH</span>
+            <span className={getHumidityStatus(shipment.reading.humidity) === 'CRITICAL' ? 'font-bold text-red-400' : getHumidityStatus(shipment.reading.humidity) === 'WARNING' ? 'font-bold text-amber-300' : 'text-emerald-400 font-medium'}>
+              {getHumidityStatus(shipment.reading.humidity)}
             </span>
           </div>
         </Panel>
@@ -2132,7 +1949,7 @@ function ShipmentDetail({
           </p>
           <div className="mt-2 flex items-center justify-between text-[10px]">
             <span className="font-semibold text-foreground truncate">{shockInfo.status}</span>
-            <span className="text-muted-foreground">Safe: &lt; 1.0 g</span>
+            <span className="text-muted-foreground">Safe: &lt; 1.5 g</span>
           </div>
         </Panel>
 
@@ -2226,7 +2043,10 @@ function ShipmentDetail({
       {/* 3. Shock / Impact History (Time -> Shock in g) */}
       <ShockHistoryChart shipment={shipment} />
 
-      {/* 4. Historical Environmental Conditions Charts */}
+      {/* 4. Activity Log & Event Timeline */}
+      <ActivityLogSection shipmentId={shipment.id} />
+
+      {/* 5. Historical Environmental Conditions Charts */}
       <div>
         <div className="mb-3">
           <h3 className="text-sm font-semibold tracking-tight text-foreground">
@@ -2242,25 +2062,25 @@ function ShipmentDetail({
         </div>
       </div>
 
-      {/* 5. Cargo Safety Evaluation & Simulation Control */}
+      {/* 6. Cargo Safety Evaluation & Simulation Control */}
       <div className="grid gap-4 xl:grid-cols-[1fr_340px]">
         <Panel className="p-5">
           <SectionHeading title="Cargo Safety Evaluation" detail="Overall status evaluated against transit threshold standards." />
           <div className="grid gap-3 sm:grid-cols-3">
             <AnalysisItem
               label="Temperature Condition"
-              value={shipment.reading.temperature >= 35 ? 'CRITICAL' : shipment.reading.temperature >= 29 ? 'WARNING' : 'SAFE'}
-              color={shipment.reading.temperature >= 35 ? 'text-red-300' : shipment.reading.temperature >= 29 ? 'text-amber-300' : 'text-emerald-300'}
+              value={getTemperatureStatus(shipment.reading.temperature)}
+              color={getTemperatureStatus(shipment.reading.temperature) === 'CRITICAL' ? 'text-red-300' : getTemperatureStatus(shipment.reading.temperature) === 'WARNING' ? 'text-amber-300' : 'text-emerald-300'}
             />
             <AnalysisItem
               label="Physical Shock Condition"
-              value={currentShock >= 3.5 ? 'STRONG SHOCK' : currentShock >= 1.5 ? 'MODERATE' : 'NORMAL'}
-              color={currentShock >= 3.5 ? 'text-orange-300' : currentShock >= 1.5 ? 'text-amber-300' : 'text-emerald-300'}
+              value={getShockStatus(currentShock) === 'CRITICAL' ? 'CRITICAL IMPACT' : getShockStatus(currentShock) === 'WARNING' ? 'WARNING' : 'SAFE'}
+              color={getShockStatus(currentShock) === 'CRITICAL' ? 'text-red-300' : getShockStatus(currentShock) === 'WARNING' ? 'text-amber-300' : 'text-emerald-300'}
             />
             <AnalysisItem
-              label="Monitoring Source"
-              value={shipment.source === 'real' ? 'PHYSICAL ESP32' : 'SIMULATED FLEET'}
-              color={shipment.source === 'real' ? 'text-emerald-300' : 'text-primary'}
+              label="Humidity Condition"
+              value={getHumidityStatus(shipment.reading.humidity)}
+              color={getHumidityStatus(shipment.reading.humidity) === 'CRITICAL' ? 'text-red-300' : getHumidityStatus(shipment.reading.humidity) === 'WARNING' ? 'text-amber-300' : 'text-emerald-300'}
             />
           </div>
           <p className="mt-4 border-t border-border pt-4 text-xs leading-relaxed text-muted-foreground">
@@ -2278,7 +2098,7 @@ function ShipmentDetail({
         />
       </div>
 
-      {/* 6. Collapsed Technical Details Section (Section 5) */}
+      {/* 7. Collapsed Technical Details Section */}
       <TechnicalDetailsSection shipment={shipment} defaultOpen={false} />
     </div>
   )

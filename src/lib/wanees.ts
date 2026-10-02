@@ -27,7 +27,7 @@ export type {
 }
 export { calculateRisk, computeRiskAssessment, computeActuators, computeMovementStatus, MOVEMENT_THRESHOLDS }
 
-export type RiskLevel = 'SAFE' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
+export type RiskLevel = 'SAFE' | 'WARNING' | 'CRITICAL' | 'MEDIUM' | 'HIGH'
 export type DeviceStatus = 'ONLINE' | 'OFFLINE' | 'SLEEP' | 'WARNING' | 'ERROR'
 export type ShipmentStatus = 'IN_TRANSIT' | 'COMPLETED'
 export type User = { name: string; company: string; email: string }
@@ -102,24 +102,24 @@ export const defaultShipments: Shipment[] = [
     deviceId: 'Wanees-001',
     status: 'IN_TRANSIT',
     reading: {
-      temperature: 27.4,
-      humidity: 53,
+      temperature: 11.8,
+      humidity: 89,
       risk: 'SAFE',
       updated: 'Just now',
       battery: 98,
       signalStrength: -65,
-      accelerationX: 0.12,
-      accelerationY: -0.04,
+      accelerationX: 0.05,
+      accelerationY: -0.02,
       accelerationZ: 9.81,
-      shockG: 0.2,
+      shockG: 0.98,
       movementStatus: 'Normal handling',
-      movement: computeMovementStatus(0.12, -0.04, 9.81),
+      movement: computeMovementStatus(0.05, -0.02, 9.81, 0.98),
       actuators: computeActuators('SAFE', 'ONLINE'),
-      riskAssessment: computeRiskAssessment(27.4, 53),
+      riskAssessment: computeRiskAssessment(11.8, 89, 0.98),
     },
     source: 'real',
     actuators: computeActuators('SAFE', 'ONLINE'),
-    riskAssessment: computeRiskAssessment(27.4, 53),
+    riskAssessment: computeRiskAssessment(11.8, 89, 0.98),
   },
   {
     id: 'WN-002',
@@ -129,22 +129,24 @@ export const defaultShipments: Shipment[] = [
     deviceId: 'Wanees-002',
     status: 'IN_TRANSIT',
     reading: {
-      temperature: 30.8,
-      humidity: 75,
-      risk: 'MEDIUM',
+      temperature: 14.2,
+      humidity: 83,
+      risk: 'WARNING',
       updated: '10 sec ago',
       battery: 84,
       signalStrength: -72,
-      accelerationX: 0.28,
-      accelerationY: -0.15,
-      accelerationZ: 9.84,
-      movement: computeMovementStatus(0.28, -0.15, 9.84),
-      actuators: computeActuators('MEDIUM', 'ONLINE'),
-      riskAssessment: computeRiskAssessment(30.8, 75),
+      accelerationX: 1.20,
+      accelerationY: -0.85,
+      accelerationZ: 10.40,
+      shockG: 1.75,
+      movementStatus: 'Movement detected',
+      movement: computeMovementStatus(1.20, -0.85, 10.40, 1.75),
+      actuators: computeActuators('WARNING', 'ONLINE'),
+      riskAssessment: computeRiskAssessment(14.2, 83, 1.75),
     },
     source: 'simulation',
-    actuators: computeActuators('MEDIUM', 'ONLINE'),
-    riskAssessment: computeRiskAssessment(30.8, 75),
+    actuators: computeActuators('WARNING', 'ONLINE'),
+    riskAssessment: computeRiskAssessment(14.2, 83, 1.75),
   },
   {
     id: 'WN-003',
@@ -154,22 +156,24 @@ export const defaultShipments: Shipment[] = [
     deviceId: 'Wanees-003',
     status: 'IN_TRANSIT',
     reading: {
-      temperature: 35.8,
-      humidity: 82,
+      temperature: 16.5,
+      humidity: 78,
       risk: 'CRITICAL',
       updated: '5 sec ago',
       battery: 76,
       signalStrength: -80,
-      accelerationX: 1.85,
-      accelerationY: -1.42,
-      accelerationZ: 11.20,
-      movement: computeMovementStatus(1.85, -1.42, 11.20),
+      accelerationX: 3.20,
+      accelerationY: -2.10,
+      accelerationZ: 14.50,
+      shockG: 3.40,
+      movementStatus: 'Strong impact detected',
+      movement: computeMovementStatus(3.20, -2.10, 14.50, 3.40),
       actuators: computeActuators('CRITICAL', 'ONLINE'),
-      riskAssessment: computeRiskAssessment(35.8, 82),
+      riskAssessment: computeRiskAssessment(16.5, 78, 3.40),
     },
     source: 'simulation',
     actuators: computeActuators('CRITICAL', 'ONLINE'),
-    riskAssessment: computeRiskAssessment(35.8, 82),
+    riskAssessment: computeRiskAssessment(16.5, 78, 3.40),
   },
   {
     id: 'WN-004',
@@ -179,8 +183,8 @@ export const defaultShipments: Shipment[] = [
     deviceId: 'Wanees-004',
     status: 'IN_TRANSIT',
     reading: {
-      temperature: 24.5,
-      humidity: 62,
+      temperature: 11.5,
+      humidity: 90,
       risk: 'SAFE',
       updated: '12 sec ago',
       battery: 91,
@@ -188,13 +192,15 @@ export const defaultShipments: Shipment[] = [
       accelerationX: 0.04,
       accelerationY: 0.02,
       accelerationZ: 9.81,
-      movement: computeMovementStatus(0.04, 0.02, 9.81),
+      shockG: 0.98,
+      movementStatus: 'Normal handling',
+      movement: computeMovementStatus(0.04, 0.02, 9.81, 0.98),
       actuators: computeActuators('SAFE', 'ONLINE'),
-      riskAssessment: computeRiskAssessment(24.5, 62),
+      riskAssessment: computeRiskAssessment(11.5, 90, 0.98),
     },
     source: 'simulation',
     actuators: computeActuators('SAFE', 'ONLINE'),
-    riskAssessment: computeRiskAssessment(24.5, 62),
+    riskAssessment: computeRiskAssessment(11.5, 90, 0.98),
   },
 ]
 
@@ -208,7 +214,7 @@ export const devices: Device[] = [
     source: 'real',
     shipmentId: 'WN-001',
     actuators: computeActuators('SAFE', 'ONLINE'),
-    riskAssessment: computeRiskAssessment(27.4, 53),
+    riskAssessment: computeRiskAssessment(11.8, 89, 0.98),
   },
   {
     id: 'Wanees-002',
@@ -218,8 +224,8 @@ export const devices: Device[] = [
     lastSeen: '10 seconds ago',
     source: 'simulation',
     shipmentId: 'WN-002',
-    actuators: computeActuators('MEDIUM', 'ONLINE'),
-    riskAssessment: computeRiskAssessment(30.8, 75),
+    actuators: computeActuators('WARNING', 'ONLINE'),
+    riskAssessment: computeRiskAssessment(14.2, 83, 1.75),
   },
   {
     id: 'Wanees-003',
@@ -230,7 +236,7 @@ export const devices: Device[] = [
     source: 'simulation',
     shipmentId: 'WN-003',
     actuators: computeActuators('CRITICAL', 'ONLINE'),
-    riskAssessment: computeRiskAssessment(35.8, 82),
+    riskAssessment: computeRiskAssessment(16.5, 78, 3.40),
   },
   {
     id: 'Wanees-004',
@@ -241,7 +247,7 @@ export const devices: Device[] = [
     source: 'simulation',
     shipmentId: 'WN-004',
     actuators: computeActuators('SAFE', 'ONLINE'),
-    riskAssessment: computeRiskAssessment(24.5, 62),
+    riskAssessment: computeRiskAssessment(11.5, 90, 0.98),
   },
 ]
 
@@ -288,16 +294,17 @@ export const shipmentService = {
       if (item.id === 'WN-001') {
         const temp = realSnapshot?.temperature ?? item.reading.temperature
         const hum = realSnapshot?.humidity ?? item.reading.humidity
-        const risk = realSnapshot?.risk ?? calculateRisk(temp, hum)
+        const ax = realSnapshot?.accelerationX ?? item.reading.accelerationX ?? 0.05
+        const ay = realSnapshot?.accelerationY ?? item.reading.accelerationY ?? -0.02
+        const az = realSnapshot?.accelerationZ ?? item.reading.accelerationZ ?? 9.81
+        const explicitShockG = realSnapshot?.shockG ?? item.reading.shockG
+        const movement = realSnapshot?.movement ?? computeMovementStatus(ax, ay, az, explicitShockG)
+        const shockG = explicitShockG ?? movement?.shockG ?? 0.98
+        const movementStatus = realSnapshot?.movementStatus ?? movement?.userStatus ?? (shockG >= 3.0 ? 'Strong impact detected' : shockG >= 1.5 ? 'Movement detected' : 'Normal handling')
+        const risk = realSnapshot?.risk ?? calculateRisk(temp, hum, shockG)
         const status = realSnapshot?.deviceStatus ?? 'ONLINE'
         const actuators = realSnapshot?.actuators ?? computeActuators(risk, status)
-        const riskAssessment = realSnapshot?.riskAssessment ?? computeRiskAssessment(temp, hum, risk)
-        const ax = realSnapshot?.accelerationX ?? item.reading.accelerationX ?? 0.12
-        const ay = realSnapshot?.accelerationY ?? item.reading.accelerationY ?? -0.04
-        const az = realSnapshot?.accelerationZ ?? item.reading.accelerationZ ?? 9.81
-        const movement = realSnapshot?.movement ?? computeMovementStatus(ax, ay, az)
-        const shockG = realSnapshot?.shockG ?? movement?.shockG ?? 0.2
-        const movementStatus = realSnapshot?.movementStatus ?? movement?.userStatus ?? 'Normal handling'
+        const riskAssessment = realSnapshot?.riskAssessment ?? computeRiskAssessment(temp, hum, shockG, risk)
 
         return {
           ...item,
@@ -327,14 +334,14 @@ export const shipmentService = {
       const overrideRisk = simOverrides[item.id] as RiskLevel | undefined
       if (overrideRisk && simProfiles[overrideRisk]) {
         const p = simProfiles[overrideRisk]
-        const actuators = computeActuators(overrideRisk, 'ONLINE')
-        const riskAssessment = computeRiskAssessment(p.temperature, p.humidity, overrideRisk)
-        const ax = p.accelerationX ?? item.reading.accelerationX ?? 0.1
-        const ay = p.accelerationY ?? item.reading.accelerationY ?? 0
+        const ax = p.accelerationX ?? item.reading.accelerationX ?? 0.05
+        const ay = p.accelerationY ?? item.reading.accelerationY ?? -0.02
         const az = p.accelerationZ ?? item.reading.accelerationZ ?? 9.81
-        const movement = computeMovementStatus(ax, ay, az)
-        const shockG = movement?.shockG ?? (overrideRisk === 'CRITICAL' ? 4.8 : overrideRisk === 'MEDIUM' ? 1.4 : 0.2)
-        const movementStatus = movement?.userStatus ?? (overrideRisk === 'CRITICAL' ? 'Strong impact detected' : overrideRisk === 'MEDIUM' ? 'Movement detected' : 'Normal handling')
+        const shockG = p.shockG ?? (overrideRisk === 'CRITICAL' ? 3.4 : overrideRisk === 'WARNING' || overrideRisk === 'MEDIUM' ? 1.75 : 0.98)
+        const movement = computeMovementStatus(ax, ay, az, shockG)
+        const movementStatus = movement?.userStatus ?? (shockG >= 3.0 ? 'Strong impact detected' : shockG >= 1.5 ? 'Movement detected' : 'Normal handling')
+        const actuators = computeActuators(overrideRisk, 'ONLINE')
+        const riskAssessment = computeRiskAssessment(p.temperature, p.humidity, shockG, overrideRisk)
         return {
           ...item,
           reading: {
@@ -454,8 +461,8 @@ export function mockHistory(reading: SensorReading | Omit<SensorReading, 'update
     })
   }
 
-  const temp = [24, 25, 25.5, 26, 26.8, reading.temperature]
-  const humidity = [64, 65, 66, 67, 68, reading.humidity]
+  const temp = [11.2, 11.4, 11.6, 11.9, 12.0, reading.temperature]
+  const humidity = [88, 89, 89, 90, 90, reading.humidity]
   const labels = ['00:00', '04:00', '08:00', '12:00', '16:00', 'Now']
   return labels.map((time, index) => ({ time, temperature: temp[index], humidity: humidity[index] }))
 }
@@ -464,9 +471,10 @@ export function mockMotionHistory(shipment: Shipment): HistoricalMotionReading[]
   const currentMovement = shipment.reading.movement || computeMovementStatus(
     shipment.reading.accelerationX,
     shipment.reading.accelerationY,
-    shipment.reading.accelerationZ
+    shipment.reading.accelerationZ,
+    shipment.reading.shockG
   )
-  const currShock = shipment.reading.shockG ?? currentMovement?.shockG ?? 0.2
+  const currShock = shipment.reading.shockG ?? currentMovement?.shockG ?? 0.98
   const currStatus = shipment.reading.movementStatus ?? currentMovement?.userStatus ?? 'Normal handling'
 
   if (shipment.source === 'real') {
@@ -485,7 +493,7 @@ export function mockMotionHistory(shipment: Shipment): HistoricalMotionReading[]
         }
         return {
           ...pt,
-          shockG: pt.shockG ?? 0.2,
+          shockG: pt.shockG ?? 0.98,
           status: pt.status ?? 'Normal handling',
         }
       })
@@ -493,18 +501,54 @@ export function mockMotionHistory(shipment: Shipment): HistoricalMotionReading[]
   }
 
   return [
-    { time: '10:15', x: 0.05, y: -0.02, z: 9.80, shockG: 0.2, status: 'Normal handling' },
-    { time: '10:25', x: 0.08, y: -0.01, z: 9.82, shockG: 0.2, status: 'Normal handling' },
-    { time: '10:32', x: 0.12, y: -0.03, z: 9.81, shockG: 0.2, status: 'Normal handling' },
-    { time: '10:37', x: 1.85, y: -1.20, z: 10.45, shockG: 1.1, status: 'Movement detected' },
-    { time: '10:41', x: 4.80, y: -2.10, z: 12.80, shockG: 4.8, status: 'Strong impact detected' },
+    { time: '10:15', x: 0.05, y: -0.02, z: 9.80, shockG: 0.98, status: 'Normal handling' },
+    { time: '10:25', x: 0.08, y: -0.01, z: 9.82, shockG: 1.02, status: 'Normal handling' },
+    { time: '10:32', x: 0.12, y: -0.03, z: 9.81, shockG: 0.99, status: 'Normal handling' },
+    { time: '10:37', x: 1.85, y: -1.20, z: 10.45, shockG: 1.75, status: 'Movement detected' },
+    { time: '10:41', x: 4.80, y: -2.10, z: 12.80, shockG: 3.25, status: 'Strong impact detected' },
     {
       time: 'Now',
-      x: shipment.reading.accelerationX ?? 0.12,
-      y: shipment.reading.accelerationY ?? -0.04,
+      x: shipment.reading.accelerationX ?? 0.05,
+      y: shipment.reading.accelerationY ?? -0.02,
       z: shipment.reading.accelerationZ ?? 9.81,
       shockG: currShock,
       status: currStatus,
     },
   ]
+}
+
+export function getShockPresentation(shockG?: number, userStatus?: string) {
+  const g = typeof shockG === 'number' && !isNaN(shockG) ? Math.round(shockG * 100) / 100 : 0.98
+
+  if (g >= 3.0 || userStatus === 'Critical impact' || userStatus === 'Strong impact detected') {
+    return {
+      value: `${g.toFixed(2)} g`,
+      status: g >= 5.0 ? '🔴 Critical impact' : '⚠️ Strong impact detected',
+      rawStatus: 'Strong impact detected',
+      level: 'critical',
+      badgeClass: 'border-red-400/35 bg-red-400/15 text-red-300',
+      dotClass: 'bg-red-400',
+      description: `Critical physical impact detected (${g.toFixed(2)} g >= 3.0 g threshold). Urgent inspection advised.`,
+    }
+  }
+  if (g >= 1.5 || userStatus === 'Movement detected' || userStatus === 'Moderate impact') {
+    return {
+      value: `${g.toFixed(2)} g`,
+      status: 'Movement detected',
+      rawStatus: 'Movement detected',
+      level: 'warning',
+      badgeClass: 'border-amber-400/35 bg-amber-400/15 text-amber-300',
+      dotClass: 'bg-amber-400',
+      description: `Active movement / moderate impact detected (${g.toFixed(2)} g in 1.5–<3.0 g warning range).`,
+    }
+  }
+  return {
+    value: `${g.toFixed(2)} g`,
+    status: 'Normal handling',
+    rawStatus: 'Normal handling',
+    level: 'normal',
+    badgeClass: 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300',
+    dotClass: 'bg-emerald-400',
+    description: `Cargo handling is steady and within normal transport limits (${g.toFixed(2)} g < 1.5 g).`,
+  }
 }
