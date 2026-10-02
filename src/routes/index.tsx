@@ -5,16 +5,21 @@ import {
   AlertCircle,
   ArrowLeft,
   ArrowRight,
+  Battery,
   Bell,
   Check,
+  ChevronDown,
   ChevronRight,
+  ChevronUp,
   Command,
   Copy,
   Cpu,
+  Droplets,
   Gauge,
   Globe2,
   LayoutDashboard,
   LogOut,
+  MapPin,
   Menu,
   Package,
   Radio,
@@ -147,6 +152,118 @@ function RiskBadge({ level }: { level: string }) {
   )
 }
 
+export function getCargoCondition(level?: string) {
+  const norm = (level || 'SAFE').toUpperCase()
+  if (norm === 'CRITICAL') {
+    return {
+      label: 'CRITICAL' as const,
+      symbol: '🔴',
+      dotClass: 'bg-red-400',
+      badgeClass: 'border-red-400/35 bg-red-400/10 text-red-300',
+      textClass: 'text-red-400',
+      title: 'CRITICAL',
+      note: 'Immediate risk alert — intervention required',
+    }
+  }
+  if (norm === 'HIGH' || norm === 'MEDIUM' || norm === 'WARNING') {
+    return {
+      label: 'WARNING' as const,
+      symbol: '🟡',
+      dotClass: 'bg-amber-400',
+      badgeClass: 'border-amber-400/35 bg-amber-400/10 text-amber-300',
+      textClass: 'text-amber-400',
+      title: 'WARNING',
+      note: 'Environmental or handling advisory',
+    }
+  }
+  return {
+    label: 'SAFE' as const,
+    symbol: '🟢',
+    dotClass: 'bg-emerald-400',
+    badgeClass: 'border-emerald-400/35 bg-emerald-400/10 text-emerald-300',
+    textClass: 'text-emerald-400',
+    title: 'SAFE',
+    note: 'Conditions optimal and secure in transit',
+  }
+}
+
+export function CargoConditionBadge({ level, size = 'md' }: { level?: string; size?: 'sm' | 'md' | 'lg' }) {
+  const cond = getCargoCondition(level)
+  const pad =
+    size === 'lg'
+      ? 'px-3.5 py-1.5 text-xs'
+      : size === 'sm'
+      ? 'px-2 py-0.5 text-[9px]'
+      : 'px-2.5 py-1 text-[10px]'
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border font-bold tracking-wider ${cond.badgeClass} ${pad}`}
+    >
+      <span className={`h-2 w-2 rounded-full ${cond.dotClass} ${cond.label === 'CRITICAL' ? 'animate-pulse' : ''}`} />
+      <span>{cond.label}</span>
+    </span>
+  )
+}
+
+export function getShockPresentation(shockG?: number, userStatus?: string) {
+  const g = typeof shockG === 'number' && !isNaN(shockG) ? Math.round(shockG * 10) / 10 : 0.2
+
+  if (g >= 6.0 || userStatus === 'Critical impact') {
+    return {
+      value: `${g.toFixed(1)} g`,
+      status: '🔴 Critical impact',
+      rawStatus: 'Critical impact',
+      level: 'critical',
+      badgeClass: 'border-red-400/35 bg-red-400/15 text-red-300',
+      dotClass: 'bg-red-400',
+      description: 'Severe physical impact or drop recorded. Urgent inspection recommended.',
+    }
+  }
+  if (g >= 3.5 || userStatus === 'Strong impact detected') {
+    return {
+      value: `${g.toFixed(1)} g`,
+      status: '⚠️ Strong impact detected',
+      rawStatus: 'Strong impact detected',
+      level: 'strong',
+      badgeClass: 'border-orange-400/35 bg-orange-400/15 text-orange-300',
+      dotClass: 'bg-orange-400',
+      description: 'Strong physical shock detected. Cargo may have experienced harsh handling.',
+    }
+  }
+  if (g >= 1.5 || userStatus === 'Moderate impact') {
+    return {
+      value: `${g.toFixed(1)} g`,
+      status: '⚠️ Moderate impact',
+      rawStatus: 'Moderate impact',
+      level: 'moderate',
+      badgeClass: 'border-amber-400/35 bg-amber-400/15 text-amber-300',
+      dotClass: 'bg-amber-400',
+      description: 'Moderate transit impact recorded. Vibration above normal baseline.',
+    }
+  }
+  if (g >= 0.9 || userStatus === 'Movement detected') {
+    return {
+      value: `${g.toFixed(1)} g`,
+      status: 'Movement detected',
+      rawStatus: 'Movement detected',
+      level: 'movement',
+      badgeClass: 'border-sky-400/35 bg-sky-400/15 text-sky-300',
+      dotClass: 'bg-sky-400',
+      description: 'Active movement detected. Cargo is in normal transit motion.',
+    }
+  }
+  return {
+    value: `${g.toFixed(1)} g`,
+    status: 'Normal handling',
+    rawStatus: 'Normal handling',
+    level: 'normal',
+    badgeClass: 'border-emerald-400/35 bg-emerald-400/15 text-emerald-300',
+    dotClass: 'bg-emerald-400',
+    description: 'Cargo handling is steady and within normal transport limits.',
+  }
+}
+
 const movementStyle: Record<string, string> = {
   NORMAL: 'border-emerald-400/20 bg-emerald-400/10 text-emerald-300',
   MOVEMENT_DETECTED: 'border-amber-300/20 bg-amber-300/10 text-amber-200',
@@ -239,35 +356,37 @@ function Metric({
 }
 
 function ShipmentRow({ shipment, onOpen }: { shipment: Shipment; onOpen: (id: string) => void }) {
+  const shock = getShockPresentation(shipment.reading.shockG, shipment.reading.movementStatus)
   return (
     <button
       onClick={() => onOpen(shipment.id)}
-      className="group grid w-full grid-cols-2 gap-x-4 gap-y-3 border-b border-border/60 px-4 py-4 text-left last:border-0 hover:bg-secondary/40 sm:grid-cols-[1.15fr_1.35fr_1.1fr_0.75fr_0.8fr_0.3fr] sm:items-center sm:gap-3"
+      className="group grid w-full grid-cols-2 gap-x-4 gap-y-3 border-b border-border/60 px-4 py-4 text-left last:border-0 hover:bg-secondary/40 sm:grid-cols-[1.2fr_1.1fr_0.9fr_1fr_0.8fr_0.3fr] sm:items-center sm:gap-3"
     >
       <div>
         <div className="flex items-center gap-2">
           <span className="font-mono text-[11px] font-semibold text-primary">{shipment.id}</span>
           <SourceBadge source={shipment.source} />
         </div>
-        <p className="mt-1 truncate text-xs font-medium">{shipment.cargo}</p>
+        <p className="mt-1 truncate text-xs font-medium text-foreground">{shipment.cargo}</p>
       </div>
       <div className="col-span-1 hidden min-w-0 sm:block">
-        <p className="truncate text-xs">
+        <p className="truncate text-xs font-medium">
           {shipment.origin.split(',')[0]} <ArrowRight className="mx-1 inline h-3 w-3 text-muted-foreground" />{' '}
           {shipment.destination.split(',')[0]}
         </p>
         <p className="mt-1 text-[10px] text-muted-foreground">{shipment.deviceId}</p>
       </div>
       <div className="text-right sm:text-left">
-        <span className="font-mono text-xs font-medium">{shipment.reading.temperature.toFixed(1)}°C</span>
-        <span className="ml-2 font-mono text-[10px] text-muted-foreground">{shipment.reading.humidity}%</span>
+        <span className="font-mono text-xs font-semibold">{shipment.reading.temperature.toFixed(1)}°C</span>
+        <span className="ml-2 font-mono text-[10px] text-muted-foreground">{shipment.reading.humidity}% RH</span>
+      </div>
+      <div className="hidden sm:block">
+        <span className="font-mono text-xs font-bold text-foreground">{shock.value}</span>
+        <span className="ml-1.5 inline-block text-[10px] text-muted-foreground truncate">{shock.rawStatus}</span>
       </div>
       <div className="justify-self-end sm:justify-self-start">
-        <RiskBadge level={shipment.reading.risk} />
+        <CargoConditionBadge level={shipment.reading.risk} size="sm" />
       </div>
-      <span className="col-span-2 text-[10px] text-muted-foreground sm:col-span-1">
-        {shipment.reading.updated}
-      </span>
       <ChevronRight className="hidden h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-1 sm:block" />
     </button>
   )
@@ -329,6 +448,281 @@ function SensorChart({ shipment, kind }: { shipment: Shipment; kind: 'temperatur
         ))}
       </div>
     </Panel>
+  )
+}
+
+function ShockHistoryChart({ shipment }: { shipment: Shipment }) {
+  const motionHistory = mockMotionHistory(shipment)
+  const shockValues = motionHistory.map(m => m.shockG ?? 0.2)
+  const maxShock = Math.max(6.0, ...shockValues) + 0.5
+  const minShock = 0
+  const range = maxShock - minShock || 1
+
+  const getYCoord = (val: number) => 46 - ((val - minShock) / range) * 38
+
+  const points = shockValues
+    .map((v, i) => `${i * (100 / (shockValues.length - 1 || 1))},${getYCoord(v)}`)
+    .join(' ')
+
+  const currentShock = shipment.reading.shockG ?? shockValues[shockValues.length - 1] ?? 0.2
+  const currentStatus = shipment.reading.movementStatus ?? motionHistory[motionHistory.length - 1]?.status ?? 'Normal handling'
+  const shockPres = getShockPresentation(currentShock, currentStatus)
+
+  const strokeColor =
+    shockPres.level === 'critical'
+      ? 'oklch(61% 0.192 25deg)'
+      : shockPres.level === 'strong'
+      ? 'oklch(69% 0.17 45deg)'
+      : shockPres.level === 'moderate'
+      ? 'oklch(79% 0.15 82deg)'
+      : 'oklch(77% 0.15 150deg)'
+
+  const timelineEvents = [...motionHistory].reverse()
+
+  return (
+    <Panel className="p-4 sm:p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <Activity className="h-4 w-4 text-primary" />
+            <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">
+              SHOCK &amp; IMPACT HISTORY
+            </h3>
+            <SourceBadge source={shipment.source} />
+          </div>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Physical impact and handling telemetry in g (Safe transport limit: &lt; 1.0 g).
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold ${shockPres.badgeClass}`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${shockPres.dotClass}`} />
+            Current: {shockPres.value}
+          </span>
+        </div>
+      </div>
+
+      <div className="relative mt-4">
+        <div className="flex justify-between text-[9px] font-mono text-muted-foreground/75 px-1 pb-1">
+          <span className="text-muted-foreground">{maxShock.toFixed(1)} g</span>
+          <span className="text-red-400 font-semibold">Impact threshold: 3.5 g</span>
+          <span className="text-emerald-400 font-semibold">Safe zone: &lt; 1.0 g</span>
+        </div>
+
+        <svg
+          viewBox="0 0 100 56"
+          preserveAspectRatio="none"
+          className="h-28 w-full overflow-visible"
+          aria-label="Physical shock over time in g"
+          role="img"
+        >
+          {/* Baseline guides */}
+          <path d="M0 48 H100" stroke="var(--border)" strokeDasharray="1.5 2" strokeWidth=".5" fill="none" />
+          <path
+            d={`M0 ${getYCoord(1.0)} H100`}
+            stroke="rgba(52, 211, 153, 0.4)"
+            strokeDasharray="2 2"
+            strokeWidth=".6"
+            fill="none"
+          />
+          <path
+            d={`M0 ${getYCoord(3.5)} H100`}
+            stroke="rgba(248, 113, 113, 0.5)"
+            strokeDasharray="2 2"
+            strokeWidth=".6"
+            fill="none"
+          />
+
+          {/* Shock Area Gradient fill */}
+          <defs>
+            <linearGradient id={`shock-grad-${shipment.id}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={strokeColor} stopOpacity="0.25" />
+              <stop offset="100%" stopColor={strokeColor} stopOpacity="0.0" />
+            </linearGradient>
+          </defs>
+
+          <polygon
+            points={`0,48 ${points} 100,48`}
+            fill={`url(#shock-grad-${shipment.id})`}
+          />
+
+          <polyline
+            points={points}
+            fill="none"
+            stroke={strokeColor}
+            strokeWidth="1.6"
+            vectorEffect="non-scaling-stroke"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          {shockValues.map((val, idx) => {
+            const x = idx * (100 / (shockValues.length - 1 || 1))
+            const y = getYCoord(val)
+            const ptColor = val >= 3.5 ? 'oklch(61% 0.192 25deg)' : val >= 1.5 ? 'oklch(79% 0.15 82deg)' : 'oklch(77% 0.15 150deg)'
+            return (
+              <circle
+                key={idx}
+                cx={x}
+                cy={y}
+                r={idx === shockValues.length - 1 ? 2.5 : 1.8}
+                fill={ptColor}
+                stroke="var(--background)"
+                strokeWidth="0.8"
+              />
+            )
+          })}
+        </svg>
+
+        <div className="mt-1 flex justify-between font-mono text-[9px] text-muted-foreground">
+          {motionHistory.map((point, idx) => (
+            <span key={idx}>{point.time}</span>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-5 border-t border-border/70 pt-3.5">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-[10px] font-bold tracking-wider text-muted-foreground uppercase">
+            CARGO IMPACT &amp; HANDLING LOG
+          </span>
+          <span className="text-[9px] text-muted-foreground">Time → Shock (g)</span>
+        </div>
+        <div className="divide-y divide-border/60 rounded-lg border border-border/80 bg-background/50 overflow-hidden">
+          {timelineEvents.map((evt, idx) => {
+            const pres = getShockPresentation(evt.shockG, evt.status)
+            return (
+              <div
+                key={idx}
+                className="flex items-center justify-between px-3 py-2 text-xs transition-colors hover:bg-secondary/30"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="font-mono text-[10px] text-muted-foreground w-12">{evt.time}</span>
+                  <span className="font-mono font-bold text-foreground">
+                    {pres.value}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[9px] font-medium ${pres.badgeClass}`}>
+                    <span className={`h-1.5 w-1.5 rounded-full ${pres.dotClass}`} />
+                    {pres.rawStatus}
+                  </span>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </Panel>
+  )
+}
+
+function TechnicalDetailsSection({
+  shipment,
+  defaultOpen = false,
+}: {
+  shipment: Shipment
+  defaultOpen?: boolean
+}) {
+  const [isOpen, setIsOpen] = useState(defaultOpen)
+  const ax = shipment.reading.accelerationX ?? 0.12
+  const ay = shipment.reading.accelerationY ?? -0.04
+  const az = shipment.reading.accelerationZ ?? 9.81
+  const magnitude = shipment.reading.movement?.magnitude ?? Math.sqrt(ax * ax + ay * ay + az * az)
+
+  return (
+    <div className="rounded-xl border border-border/80 bg-card/60 p-4 transition-all">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex w-full items-center justify-between text-left"
+        aria-expanded={isOpen}
+      >
+        <div className="flex items-center gap-2">
+          <Cpu className="h-4 w-4 text-muted-foreground" />
+          <span className="text-xs font-semibold text-foreground">Technical Details &amp; Raw Sensor Data</span>
+          <span className="rounded bg-secondary px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground">
+            MPU6050 &amp; Actuators
+          </span>
+        </div>
+        <div className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground">
+          <span>{isOpen ? 'Hide technical data' : 'Show technical details'}</span>
+          {isOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+        </div>
+      </button>
+
+      {isOpen && (
+        <div className="mt-4 space-y-4 border-t border-border/60 pt-4 animate-fade-in">
+          <p className="text-[11px] text-muted-foreground">
+            Underlying sensor telemetry retained for engineering inspection, hardware verification, and ESP32 diagnostics.
+          </p>
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-lg border border-border/70 bg-background/60 p-3 font-mono">
+              <span className="text-[9px] font-semibold text-muted-foreground">MPU6050 ACCEL X</span>
+              <p className="mt-1 text-sm font-bold text-sky-400">{ax.toFixed(2)} m/s²</p>
+              <span className="text-[9px] text-muted-foreground">Lateral / side motion axis</span>
+            </div>
+            <div className="rounded-lg border border-border/70 bg-background/60 p-3 font-mono">
+              <span className="text-[9px] font-semibold text-muted-foreground">MPU6050 ACCEL Y</span>
+              <p className="mt-1 text-sm font-bold text-purple-400">{ay.toFixed(2)} m/s²</p>
+              <span className="text-[9px] text-muted-foreground">Longitudinal / front-back axis</span>
+            </div>
+            <div className="rounded-lg border border-border/70 bg-background/60 p-3 font-mono">
+              <span className="text-[9px] font-semibold text-muted-foreground">MPU6050 ACCEL Z</span>
+              <p className="mt-1 text-sm font-bold text-amber-400">{az.toFixed(2)} m/s²</p>
+              <span className="text-[9px] text-muted-foreground">Vertical (1G baseline included)</span>
+            </div>
+            <div className="rounded-lg border border-border/70 bg-background/60 p-3 font-mono">
+              <span className="text-[9px] font-semibold text-muted-foreground">ACCEL MAGNITUDE</span>
+              <p className="mt-1 text-sm font-bold text-foreground">{magnitude.toFixed(2)} m/s²</p>
+              <span className="text-[9px] text-muted-foreground">Square root sum of squares</span>
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3 font-mono text-[10px]">
+            <div className="rounded-lg border border-border/70 bg-background/45 p-2.5">
+              <span className="text-muted-foreground">SIGNAL STRENGTH (RSSI):</span>
+              <p className="mt-0.5 font-bold text-foreground">{shipment.reading.signalStrength ?? -65} dBm</p>
+            </div>
+            <div className="rounded-lg border border-border/70 bg-background/45 p-2.5">
+              <span className="text-muted-foreground">DEVICE ID &amp; FIRMWARE:</span>
+              <p className="mt-0.5 font-bold text-foreground">{shipment.deviceId} (ESP32 · v1.4.2)</p>
+            </div>
+            <div className="rounded-lg border border-border/70 bg-background/45 p-2.5">
+              <span className="text-muted-foreground">INGESTION ENDPOINT:</span>
+              <p className="mt-0.5 font-bold text-emerald-400">POST /api/device/data (Active)</p>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-border/70 bg-background/45 p-3">
+            <span className="block text-[9px] font-bold text-muted-foreground uppercase tracking-wider mb-2">
+              HARDWARE ACTUATOR PIN FEEDBACK:
+            </span>
+            <div className="flex flex-wrap gap-2 text-[10px] font-mono">
+              <span className={`px-2.5 py-1 rounded border ${shipment.actuators?.ledGreen ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300' : 'border-border text-muted-foreground'}`}>
+                Green LED: {shipment.actuators?.ledGreen ? 'ACTIVE (SAFE)' : 'STANDBY'}
+              </span>
+              <span className={`px-2.5 py-1 rounded border ${shipment.actuators?.ledYellow ? 'border-amber-500/40 bg-amber-500/15 text-amber-300' : 'border-border text-muted-foreground'}`}>
+                Yellow LED: {shipment.actuators?.ledYellow ? 'ACTIVE (ADVISORY)' : 'STANDBY'}
+              </span>
+              <span className={`px-2.5 py-1 rounded border ${shipment.actuators?.ledRed ? 'border-red-500/40 bg-red-500/15 text-red-300' : 'border-border text-muted-foreground'}`}>
+                Red LED: {shipment.actuators?.ledRed ? 'ACTIVE (WARNING)' : 'STANDBY'}
+              </span>
+              <span className={`px-2.5 py-1 rounded border ${shipment.actuators?.buzzer ? 'border-red-500/40 bg-red-500/20 text-red-300 animate-pulse font-bold' : 'border-border text-muted-foreground'}`}>
+                Alarm Buzzer: {shipment.actuators?.buzzer ? 'SOUNDING' : 'SILENT'}
+              </span>
+            </div>
+          </div>
+
+          <div className="pt-2">
+            <span className="block text-[9px] font-bold text-muted-foreground uppercase tracking-wider mb-2">
+              Raw 3-Axis Motion Engineering Graph:
+            </span>
+            <MovementChart shipment={shipment} />
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -959,123 +1353,146 @@ function Dashboard({
         </div>
       </div>
 
-      {realShipment && (
-        <Panel className="border-emerald-400/30 bg-gradient-to-r from-emerald-500/[0.07] via-card to-card p-5">
-          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border/70 pb-4">
-            <div className="flex items-center gap-3">
-              <span className="rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-2.5 text-emerald-300">
-                <Radio className="h-5 w-5 animate-pulse" />
-              </span>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs font-bold text-foreground">
-                    PHYSICAL WANEES BOX (ESP32 UNIT)
-                  </span>
-                  <SourceBadge source="real" />
-                </div>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {realShipment.cargo} · Device: <span className="font-mono text-primary">{realShipment.deviceId}</span>
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2.5">
-              <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-400/30 bg-emerald-400/10 px-2.5 py-1 font-mono text-[10px] font-bold text-emerald-300">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                MPU6050: Connected
-              </span>
-              <MovementBadge
-                status={realShipment.reading.movement?.status}
-                label={realShipment.reading.movement?.statusLabel}
-              />
-              <RiskBadge level={realShipment.reading.risk} />
-              <button
-                onClick={() => onOpen(realShipment.id)}
-                className="inline-flex items-center gap-1 rounded-md border border-border bg-secondary/80 px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-secondary"
-              >
-                Inspect Live Stream <ArrowRight className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </div>
-
-          {/* Primary Telemetry Grid: Environmental + Acceleration */}
-          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-            <div className="rounded-lg border border-border/80 bg-background/60 p-3">
-              <span className="text-[9px] font-semibold tracking-wider text-muted-foreground">LIVE TEMPERATURE</span>
-              <p className="mt-1 font-mono text-xl font-bold text-foreground">
-                {realShipment.reading.temperature.toFixed(1)}°C
-              </p>
-              <span className="text-[9px] text-muted-foreground">DHT22 sensor</span>
-            </div>
-            <div className="rounded-lg border border-border/80 bg-background/60 p-3">
-              <span className="text-[9px] font-semibold tracking-wider text-muted-foreground">LIVE HUMIDITY</span>
-              <p className="mt-1 font-mono text-xl font-bold text-foreground">{realShipment.reading.humidity}%</p>
-              <span className="text-[9px] text-muted-foreground">DHT22 sensor</span>
-            </div>
-            <div className="rounded-lg border border-sky-400/25 bg-sky-400/[0.05] p-3">
-              <div className="flex items-center justify-between">
-                <span className="text-[9px] font-semibold tracking-wider text-sky-400">ACCELERATION X</span>
-                <span className="h-1.5 w-1.5 rounded-full bg-sky-400" />
-              </div>
-              <p className="mt-1 font-mono text-xl font-bold text-foreground">
-                {(realShipment.reading.accelerationX ?? 0).toFixed(2)}{' '}
-                <span className="text-[10px] font-normal text-muted-foreground">m/s²</span>
-              </p>
-              <span className="text-[9px] text-muted-foreground">MPU6050 lateral</span>
-            </div>
-            <div className="rounded-lg border border-purple-400/25 bg-purple-400/[0.05] p-3">
-              <div className="flex items-center justify-between">
-                <span className="text-[9px] font-semibold tracking-wider text-purple-400">ACCELERATION Y</span>
-                <span className="h-1.5 w-1.5 rounded-full bg-purple-400" />
-              </div>
-              <p className="mt-1 font-mono text-xl font-bold text-foreground">
-                {(realShipment.reading.accelerationY ?? 0).toFixed(2)}{' '}
-                <span className="text-[10px] font-normal text-muted-foreground">m/s²</span>
-              </p>
-              <span className="text-[9px] text-muted-foreground">MPU6050 front-back</span>
-            </div>
-            <div className="rounded-lg border border-amber-400/25 bg-amber-400/[0.05] p-3">
-              <div className="flex items-center justify-between">
-                <span className="text-[9px] font-semibold tracking-wider text-amber-400">ACCELERATION Z</span>
-                <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-              </div>
-              <p className="mt-1 font-mono text-xl font-bold text-foreground">
-                {(realShipment.reading.accelerationZ ?? 9.81).toFixed(2)}{' '}
-                <span className="text-[10px] font-normal text-muted-foreground">m/s²</span>
-              </p>
-              <span className="text-[9px] text-muted-foreground">MPU6050 vertical</span>
-            </div>
-          </div>
-
-          {/* Motion Status & Live 3-Axis Chart */}
-          <div className="mt-4 rounded-xl border border-border/70 bg-background/40 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-3">
-              <div className="flex items-center gap-2">
-                <span className="rounded-md border border-primary/20 bg-primary/10 p-1.5 text-primary">
-                  <Activity className="h-3.5 w-3.5" />
+      {realShipment && (() => {
+        const realShock = getShockPresentation(
+          realShipment.reading.shockG,
+          realShipment.reading.movementStatus
+        )
+        const condition = getCargoCondition(realShipment.reading.risk)
+        return (
+          <Panel className="border-emerald-400/30 bg-gradient-to-r from-emerald-500/[0.07] via-card to-card p-5">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border/70 pb-4">
+              <div className="flex items-center gap-3">
+                <span className="rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-2.5 text-emerald-300">
+                  <Radio className="h-5 w-5 animate-pulse" />
                 </span>
                 <div>
-                  <span className="text-xs font-semibold text-foreground">Motion &amp; Movement Dynamics</span>
-                  <p className="text-[10px] text-muted-foreground">
-                    {realShipment.reading.movement?.description || 'Normal acceleration within steady baseline.'}
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs font-bold text-foreground">
+                      PHYSICAL SHIPMENT #{realShipment.id}
+                    </span>
+                    <SourceBadge source="real" />
+                  </div>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {realShipment.cargo} · Device: <span className="font-mono text-primary">{realShipment.deviceId}</span>
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <MovementBadge
-                  status={realShipment.reading.movement?.status}
-                  label={realShipment.reading.movement?.statusLabel}
-                />
-                <span className="font-mono text-[10px] text-muted-foreground">
-                  Magnitude: {(realShipment.reading.movement?.magnitude ?? 9.81).toFixed(2)} m/s²
-                </span>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <CargoConditionBadge level={realShipment.reading.risk} size="md" />
+                <button
+                  onClick={() => onOpen(realShipment.id)}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border bg-secondary/80 px-3.5 py-1.5 text-xs font-semibold text-foreground hover:bg-secondary hover:text-primary transition-colors"
+                >
+                  View Shipment #{realShipment.id} <ArrowRight className="h-3.5 w-3.5" />
+                </button>
               </div>
             </div>
-            <div className="mt-3">
-              <MovementChart shipment={realShipment} />
+
+            {/* Top 4 Primary Customer Cards */}
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="rounded-lg border border-border/80 bg-background/60 p-3.5">
+                <div className="flex items-center justify-between text-muted-foreground">
+                  <span className="text-[10px] font-bold tracking-wider uppercase">🌡️ TEMPERATURE</span>
+                  <Thermometer className="h-3.5 w-3.5 text-primary" />
+                </div>
+                <p className="mt-2 font-mono text-2xl font-extrabold text-foreground">
+                  {realShipment.reading.temperature.toFixed(1)}°C
+                </p>
+                <span className="mt-1 block text-[10px] text-muted-foreground">Safe: 18.0–29.0°C</span>
+              </div>
+
+              <div className="rounded-lg border border-border/80 bg-background/60 p-3.5">
+                <div className="flex items-center justify-between text-muted-foreground">
+                  <span className="text-[10px] font-bold tracking-wider uppercase">💧 HUMIDITY</span>
+                  <Droplets className="h-3.5 w-3.5 text-sky-400" />
+                </div>
+                <p className="mt-2 font-mono text-2xl font-extrabold text-foreground">
+                  {realShipment.reading.humidity}%
+                </p>
+                <span className="mt-1 block text-[10px] text-muted-foreground">Safe: 50–70% RH</span>
+              </div>
+
+              <div className={`rounded-lg border p-3.5 ${
+                realShock.level === 'critical'
+                  ? 'border-red-400/40 bg-red-400/10'
+                  : realShock.level === 'strong'
+                  ? 'border-orange-400/40 bg-orange-400/10'
+                  : realShock.level === 'moderate'
+                  ? 'border-amber-400/35 bg-amber-400/10'
+                  : 'border-border/80 bg-background/60'
+              }`}>
+                <div className="flex items-center justify-between text-muted-foreground">
+                  <span className="text-[10px] font-bold tracking-wider uppercase">💥 CURRENT SHOCK</span>
+                  <span className={`h-2 w-2 rounded-full ${realShock.dotClass}`} />
+                </div>
+                <p className="mt-2 font-mono text-2xl font-extrabold text-foreground">
+                  {realShock.value}
+                </p>
+                <span className="mt-1 block text-[10px] font-semibold text-foreground truncate">
+                  {realShock.status}
+                </span>
+              </div>
+
+              <div className="rounded-lg border border-border/80 bg-background/60 p-3.5">
+                <div className="flex items-center justify-between text-muted-foreground">
+                  <span className="text-[10px] font-bold tracking-wider uppercase">🔋 BATTERY</span>
+                  <Battery className="h-3.5 w-3.5 text-emerald-400" />
+                </div>
+                <p className="mt-2 font-mono text-2xl font-extrabold text-foreground">
+                  {realShipment.reading.battery ?? 98}%
+                </p>
+                <span className="mt-1 block text-[10px] text-emerald-400 font-medium">Monitoring active</span>
+              </div>
             </div>
-          </div>
-        </Panel>
-      )}
+
+            {/* Secondary Customer Info: Movement, Route, Device Status */}
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-lg border border-border/70 bg-background/45 p-3">
+                <span className="text-[9px] font-bold tracking-wider uppercase text-muted-foreground">
+                  CARGO MOVEMENT
+                </span>
+                <p className="mt-1 text-xs font-semibold text-foreground">{realShock.status}</p>
+                <p className="mt-0.5 text-[10px] text-muted-foreground truncate">{realShock.description}</p>
+              </div>
+
+              <div className="rounded-lg border border-border/70 bg-background/45 p-3">
+                <span className="text-[9px] font-bold tracking-wider uppercase text-muted-foreground">
+                  SHIPMENT ROUTE
+                </span>
+                <p className="mt-1 text-xs font-semibold text-foreground">
+                  {realShipment.origin.split(',')[0]} → {realShipment.destination.split(',')[0]}
+                </p>
+                <p className="mt-0.5 text-[10px] text-muted-foreground">Status: In Transit</p>
+              </div>
+
+              <div className="rounded-lg border border-border/70 bg-background/45 p-3">
+                <span className="text-[9px] font-bold tracking-wider uppercase text-muted-foreground">
+                  DEVICE STATUS
+                </span>
+                <div className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-emerald-300">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                  <span>Online</span>
+                  <span className="text-[10px] text-muted-foreground font-normal">
+                    · Updated {realShipment.reading.updated}
+                  </span>
+                </div>
+                <p className="mt-0.5 text-[10px] text-muted-foreground">Unit: {realShipment.deviceId}</p>
+              </div>
+            </div>
+
+            {/* Shock & Impact History Chart */}
+            <div className="mt-4">
+              <ShockHistoryChart shipment={realShipment} />
+            </div>
+
+            {/* Collapsed Technical Details */}
+            <div className="mt-4">
+              <TechnicalDetailsSection shipment={realShipment} defaultOpen={false} />
+            </div>
+          </Panel>
+        )
+      })()}
 
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <Metric
@@ -1123,12 +1540,12 @@ function Dashboard({
             }
           />
           <Panel className="overflow-hidden">
-            <div className="hidden grid-cols-[1.15fr_1.35fr_1.1fr_0.75fr_0.8fr_0.3fr] gap-3 border-b border-border bg-secondary/40 px-4 py-3 text-[9px] font-semibold tracking-[0.1em] text-muted-foreground sm:grid">
+            <div className="hidden grid-cols-[1.2fr_1.1fr_0.9fr_1fr_0.8fr_0.3fr] gap-3 border-b border-border bg-secondary/40 px-4 py-3 text-[9px] font-semibold tracking-[0.1em] text-muted-foreground sm:grid">
               <span>SHIPMENT / SOURCE</span>
               <span>ROUTE / DEVICE</span>
-              <span>CONDITIONS</span>
-              <span>RISK</span>
-              <span>TELEMETRY TIME</span>
+              <span>TEMP &amp; HUMIDITY</span>
+              <span>CURRENT SHOCK</span>
+              <span>CARGO CONDITION</span>
               <span />
             </div>
             {shipments.map(shipment => (
@@ -1330,31 +1747,41 @@ function Esp32TestPanel({
 
       <div className="mt-4 grid gap-5 lg:grid-cols-2">
         <div>
-          <p className="text-[10px] font-bold tracking-wider text-muted-foreground">MOTION PRESETS (DHT22 &amp; MPU6050 ACCELERATION)</p>
-          <div className="mt-2 grid grid-cols-3 gap-2">
+          <p className="text-[10px] font-bold tracking-wider text-muted-foreground uppercase">
+            TELEMETRY TEST PRESETS (CONVERTS INTERNALLY TO SHOCK IN g)
+          </p>
+          <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
             <button
               onClick={() => applyPreset(27.4, 53, 0.0, 0.0, 9.81, 'SAFE')}
-              className="flex flex-col items-center rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-2.5 text-center transition hover:bg-emerald-400/20"
+              className="flex flex-col items-center rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-2 text-center transition hover:bg-emerald-400/20"
             >
               <span className="font-mono text-[11px] font-bold text-emerald-300">27.4°C / 53%</span>
-              <span className="mt-0.5 font-mono text-[9px] text-muted-foreground">Z: 9.81 m/s²</span>
-              <span className="mt-1 text-[9px] font-bold text-emerald-400">● Rest</span>
+              <span className="mt-0.5 font-mono text-[9px] text-emerald-400 font-semibold">0.2 g · Normal</span>
+              <span className="mt-1 text-[8px] font-bold text-emerald-400">● SAFE</span>
             </button>
             <button
               onClick={() => applyPreset(28.5, 58, 1.85, -1.20, 10.45, 'MEDIUM')}
-              className="flex flex-col items-center rounded-lg border border-amber-300/30 bg-amber-300/10 p-2.5 text-center transition hover:bg-amber-300/20"
+              className="flex flex-col items-center rounded-lg border border-sky-400/30 bg-sky-400/10 p-2 text-center transition hover:bg-sky-400/20"
             >
-              <span className="font-mono text-[11px] font-bold text-amber-200">28.5°C / 58%</span>
-              <span className="mt-0.5 font-mono text-[9px] text-muted-foreground">X: 1.85 m/s²</span>
-              <span className="mt-1 text-[9px] font-bold text-amber-300">▲ Movement</span>
+              <span className="font-mono text-[11px] font-bold text-sky-200">28.5°C / 58%</span>
+              <span className="mt-0.5 font-mono text-[9px] text-sky-300 font-semibold">1.1 g · Movement</span>
+              <span className="mt-1 text-[8px] font-bold text-sky-300">▲ TRANSIT</span>
             </button>
             <button
-              onClick={() => applyPreset(29.2, 62, 7.50, -5.20, 18.20, 'CRITICAL')}
-              className="flex flex-col items-center rounded-lg border border-red-400/30 bg-red-400/10 p-2.5 text-center transition hover:bg-red-400/20"
+              onClick={() => applyPreset(29.2, 62, 4.80, -2.10, 12.80, 'HIGH')}
+              className="flex flex-col items-center rounded-lg border border-orange-400/30 bg-orange-400/10 p-2 text-center transition hover:bg-orange-400/20"
             >
-              <span className="font-mono text-[11px] font-bold text-red-300">29.2°C / 62%</span>
-              <span className="mt-0.5 font-mono text-[9px] text-muted-foreground">Shock: 20 m/s²</span>
-              <span className="mt-1 text-[9px] font-bold text-red-400">■ Shock</span>
+              <span className="font-mono text-[11px] font-bold text-orange-200">29.2°C / 62%</span>
+              <span className="mt-0.5 font-mono text-[9px] text-orange-300 font-semibold">4.8 g · Strong Impact</span>
+              <span className="mt-1 text-[8px] font-bold text-orange-300">⚠️ WARNING</span>
+            </button>
+            <button
+              onClick={() => applyPreset(35.8, 82, 8.50, -6.20, 19.50, 'CRITICAL')}
+              className="flex flex-col items-center rounded-lg border border-red-400/30 bg-red-400/10 p-2 text-center transition hover:bg-red-400/20"
+            >
+              <span className="font-mono text-[11px] font-bold text-red-300">35.8°C / 82%</span>
+              <span className="mt-0.5 font-mono text-[9px] text-red-400 font-semibold">8.2 g · Critical Impact</span>
+              <span className="mt-1 text-[8px] font-bold text-red-400">🔴 CRITICAL</span>
             </button>
           </div>
 
@@ -1510,40 +1937,47 @@ function ShipmentsPage({
 
         {visible.length ? (
           <>
-            <div className="hidden grid-cols-[1.3fr_0.9fr_1.3fr_0.8fr_0.6fr_0.6fr_0.8fr] gap-3 border-b border-border bg-secondary/35 px-4 py-3 text-[9px] font-semibold tracking-[0.09em] text-muted-foreground xl:grid">
+            <div className="hidden grid-cols-[1.3fr_0.8fr_1.2fr_0.9fr_1fr_0.8fr] gap-3 border-b border-border bg-secondary/35 px-4 py-3 text-[9px] font-semibold tracking-[0.09em] text-muted-foreground xl:grid">
               <span>SHIPMENT / CARGO</span>
               <span>DATA SOURCE</span>
               <span>ROUTE</span>
-              <span>DEVICE</span>
-              <span>TEMP</span>
-              <span>HUMIDITY</span>
-              <span>RISK / STATUS</span>
+              <span>TEMP &amp; HUMIDITY</span>
+              <span>CURRENT SHOCK</span>
+              <span>CARGO CONDITION</span>
             </div>
-            {visible.map(shipment => (
-              <button
-                key={shipment.id}
-                onClick={() => onOpen(shipment.id)}
-                className="grid w-full grid-cols-2 gap-3 border-b border-border/70 px-4 py-4 text-left transition-colors hover:bg-secondary/35 last:border-0 xl:grid-cols-[1.3fr_0.9fr_1.3fr_0.8fr_0.6fr_0.6fr_0.8fr] xl:items-center"
-              >
-                <div>
-                  <span className="font-mono text-[10px] font-bold text-primary">{shipment.id}</span>
-                  <p className="mt-1 text-xs font-medium">{shipment.cargo}</p>
-                </div>
-                <div>
-                  <SourceBadge source={shipment.source} />
-                </div>
-                <span className="hidden text-[10px] text-muted-foreground xl:block">
-                  {shipment.origin.split(',')[0]} → {shipment.destination.split(',')[0]}
-                </span>
-                <span className="hidden font-mono text-[10px] xl:block">{shipment.deviceId}</span>
-                <span className="font-mono text-xs font-medium">{shipment.reading.temperature.toFixed(1)}°C</span>
-                <span className="self-center font-mono text-xs">{shipment.reading.humidity}%</span>
-                <span className="col-span-2 flex items-center justify-between xl:col-span-1">
-                  <RiskBadge level={shipment.reading.risk} />
-                  <span className="text-[9px] text-muted-foreground">{shipment.reading.updated}</span>
-                </span>
-              </button>
-            ))}
+            {visible.map(shipment => {
+              const shock = getShockPresentation(shipment.reading.shockG, shipment.reading.movementStatus)
+              return (
+                <button
+                  key={shipment.id}
+                  onClick={() => onOpen(shipment.id)}
+                  className="grid w-full grid-cols-2 gap-3 border-b border-border/70 px-4 py-4 text-left transition-colors hover:bg-secondary/35 last:border-0 xl:grid-cols-[1.3fr_0.8fr_1.2fr_0.9fr_1fr_0.8fr] xl:items-center"
+                >
+                  <div>
+                    <span className="font-mono text-[10px] font-bold text-primary">{shipment.id}</span>
+                    <p className="mt-1 text-xs font-medium">{shipment.cargo}</p>
+                  </div>
+                  <div>
+                    <SourceBadge source={shipment.source} />
+                  </div>
+                  <span className="hidden text-[10px] text-muted-foreground xl:block">
+                    {shipment.origin.split(',')[0]} → {shipment.destination.split(',')[0]}
+                  </span>
+                  <div>
+                    <span className="font-mono text-xs font-semibold">{shipment.reading.temperature.toFixed(1)}°C</span>
+                    <span className="ml-1.5 font-mono text-[10px] text-muted-foreground">{shipment.reading.humidity}%</span>
+                  </div>
+                  <div className="hidden sm:block">
+                    <span className="font-mono text-xs font-bold text-foreground">{shock.value}</span>
+                    <span className="ml-1 text-[10px] text-muted-foreground truncate">{shock.rawStatus}</span>
+                  </div>
+                  <div className="col-span-2 flex items-center justify-between xl:col-span-1">
+                    <CargoConditionBadge level={shipment.reading.risk} size="sm" />
+                    <span className="text-[9px] text-muted-foreground">{shipment.reading.updated}</span>
+                  </div>
+                </button>
+              )
+            })}
           </>
         ) : (
           <EmptyPage
@@ -1570,101 +2004,66 @@ function ShipmentDetail({
   const isCritical = shipment.reading.risk === 'CRITICAL'
   const otherAlerts = alerts.filter(alert => alert.shipmentId === shipment.id && alert.active)
 
+  const currentShock = shipment.reading.shockG ?? shipment.reading.movement?.shockG ?? 0.2
+  const movementStatus = shipment.reading.movementStatus ?? shipment.reading.movement?.userStatus ?? 'Normal handling'
+  const shockInfo = getShockPresentation(currentShock, movementStatus)
+  const condition = getCargoCondition(shipment.reading.risk)
+  const battery = shipment.reading.battery ?? 98
+
   return (
     <div className="animate-fade-in space-y-6">
+      {/* Top Header: Shipment ID, Cargo Condition, Source */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="mb-2 flex items-center gap-2 font-mono text-[9px] tracking-[0.13em] text-muted-foreground">
-            <span>SHIPMENT RECORD</span>
+            <span>SHIPMENTS</span>
             <ChevronRight className="h-3 w-3" />
-            <span className="text-primary">{shipment.id}</span>
+            <span className="text-primary font-bold">{shipment.id}</span>
           </div>
-          <div className="flex items-center gap-3">
-            <h2 className="text-2xl font-semibold tracking-tight">Shipment #{shipment.id}</h2>
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+              Shipment #{shipment.id}
+            </h2>
+            <CargoConditionBadge level={shipment.reading.risk} size="lg" />
             <SourceBadge source={shipment.source} />
           </div>
-          <p className="mt-1.5 text-xs text-muted-foreground">{shipment.cargo}</p>
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            {shipment.cargo} · Active Logistics Monitoring
+          </p>
         </div>
-        <RiskBadge level={shipment.reading.risk} />
+
+        {/* Cargo Status Badge / Integrity Indicator */}
+        <div className="rounded-xl border border-border/80 bg-card px-4 py-2.5 text-right">
+          <span className="block text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+            CARGO SAFETY STATUS
+          </span>
+          <span className={`font-mono text-xs font-bold ${condition.textClass}`}>
+            {condition.symbol} {condition.title}
+          </span>
+        </div>
       </div>
 
-      <Panel className="overflow-hidden">
-        <div className="grid gap-0 md:grid-cols-[1.3fr_0.7fr]">
-          <div className="p-5 sm:p-6">
-            <div className="mb-5 flex items-center justify-between">
-              <span className="text-[10px] font-semibold tracking-[0.13em] text-muted-foreground">ROUTE OVERVIEW</span>
-              <span className="rounded border border-border px-2 py-1 text-[9px] text-muted-foreground">
-                IN TRANSIT
-              </span>
-            </div>
-            <div className="flex items-center gap-3 sm:gap-5">
-              <div className="min-w-0">
-                <span className="font-mono text-[9px] text-muted-foreground">ORIGIN</span>
-                <p className="mt-1 truncate text-sm font-semibold">{shipment.origin.split(',')[0]}</p>
-                <p className="mt-1 text-[10px] text-muted-foreground">{shipment.origin.split(',')[1]}</p>
-              </div>
-              <div className="relative mx-1 flex flex-1 items-center">
-                <div className="h-px w-full border-t border-dashed border-primary/50" />
-                <span className="absolute left-1/2 -translate-x-1/2 rounded-full border border-primary/30 bg-background p-2 text-primary">
-                  <Package className="h-3.5 w-3.5" />
-                </span>
-                <span className="absolute left-0 h-1.5 w-1.5 rounded-full bg-primary" />
-                <span className="absolute right-0 h-1.5 w-1.5 rounded-full bg-muted-foreground" />
-              </div>
-              <div className="min-w-0 text-right">
-                <span className="font-mono text-[9px] text-muted-foreground">DESTINATION</span>
-                <p className="mt-1 truncate text-sm font-semibold">{shipment.destination.split(',')[0]}</p>
-                <p className="mt-1 text-[10px] text-muted-foreground">{shipment.destination.split(',')[1]}</p>
-              </div>
-            </div>
-          </div>
-          <button
-            onClick={() => onDevice(shipment.deviceId)}
-            className="flex items-center justify-between gap-3 border-t border-border bg-secondary/35 px-5 py-4 text-left transition-colors hover:bg-secondary/60 md:border-l md:border-t-0"
-          >
-            <span className="flex items-center gap-3">
-              <span className="rounded-lg border border-primary/20 bg-primary/10 p-2.5 text-primary">
-                <Cpu className="h-4 w-4" />
-              </span>
-              <div>
-                <span className="block text-[9px] font-semibold tracking-wider text-muted-foreground">
-                  MONITORING DEVICE
-                </span>
-                <span className="mt-0.5 block font-mono text-xs font-semibold">{shipment.deviceId}</span>
-                <span className="mt-1 inline-flex items-center gap-1 rounded border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 font-mono text-[9px] font-bold text-emerald-300">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  MPU6050: CONNECTED
-                </span>
-              </div>
-            </span>
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-          </button>
-        </div>
-      </Panel>
-
+      {/* Critical Alert Notice (if applicable) */}
       {isCritical && (
-        <div className="rounded-xl border border-red-400/35 bg-red-400/[0.08] p-4 sm:p-5">
+        <div className="rounded-xl border border-red-400/40 bg-red-400/[0.09] p-4 sm:p-5">
           <div className="flex items-start gap-3">
-            <span className="mt-0.5 rounded-md border border-red-400/30 bg-red-400/10 p-2 text-red-300">
-              <AlertCircle className="h-4 w-4" />
+            <span className="mt-0.5 rounded-md border border-red-400/30 bg-red-400/20 p-2 text-red-300">
+              <AlertCircle className="h-5 w-5" />
             </span>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="font-mono text-[11px] font-extrabold tracking-[0.1em] text-red-300">
-                  CRITICAL ALERT
+                <span className="font-mono text-xs font-extrabold tracking-wider text-red-300">
+                  CRITICAL CARGO RISK DETECTED
                 </span>
-                <span className="text-[10px] text-muted-foreground">Immediate attention required</span>
+                <span className="text-[10px] text-muted-foreground">Immediate action advised</span>
               </div>
-              <p className="mt-2 text-xs leading-relaxed text-foreground/90">
-                Temperature has exceeded the configured safe threshold. Take operational intervention to protect cargo.
+              <p className="mt-1.5 text-xs leading-relaxed text-foreground/90">
+                Environmental conditions or physical impact have exceeded safe operational thresholds.
               </p>
-              <div className="mt-4 flex flex-wrap gap-x-8 gap-y-2 border-t border-red-400/15 pt-3 font-mono text-[10px]">
-                <span>
-                  Temperature <b className="ml-2 text-red-300">{shipment.reading.temperature.toFixed(1)}°C</b>
-                </span>
-                <span>
-                  Humidity <b className="ml-2 text-red-300">{shipment.reading.humidity}%</b>
-                </span>
+              <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2 border-t border-red-400/20 pt-2.5 font-mono text-[11px]">
+                <span>Temperature: <b className="text-red-300">{shipment.reading.temperature.toFixed(1)}°C</b></span>
+                <span>Humidity: <b className="text-red-300">{shipment.reading.humidity}%</b></span>
+                <span>Shock: <b className="text-red-300">{shockInfo.value}</b></span>
                 <span className="text-muted-foreground">{otherAlerts[0]?.time ?? 'Just now'}</span>
               </div>
             </div>
@@ -1672,195 +2071,204 @@ function ShipmentDetail({
         </div>
       )}
 
-      {/* Monitoring Condition Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <ConditionCard
-          label="CURRENT TEMPERATURE"
-          value={`${shipment.reading.temperature.toFixed(1)}°C`}
-          icon={Thermometer}
-          foot="Safe range: 18–29°C"
-          risk={isCritical || shipment.reading.risk === 'HIGH' ? 'warning' : undefined}
-        />
-        <ConditionCard
-          label="CURRENT HUMIDITY"
-          value={`${shipment.reading.humidity}%`}
-          icon={Globe2}
-          foot="Safe range: 50–70%"
-          risk={isCritical ? 'warning' : undefined}
-        />
-        <ConditionCard
-          label="CALCULATED RISK"
-          value={shipment.reading.risk}
-          icon={Gauge}
-          foot="Modular Wanees threshold engine"
-        />
-        <div className="rounded-xl border border-border bg-card p-4 text-left transition-colors hover:border-primary/40">
+      {/* 1. Main Dashboard Cards: Temperature, Humidity, Current Shock, Battery */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {/* Temperature Card */}
+        <Panel className="p-4 sm:p-5 transition-colors hover:border-primary/40">
           <div className="flex items-center justify-between">
-            <span className="text-[9px] font-semibold tracking-[0.12em] text-muted-foreground">
-              {shipment.source === 'real' ? 'PHYSICAL WANEES BOX' : 'DEVICE STATUS'}
+            <span className="text-[10px] font-bold tracking-wider text-muted-foreground uppercase">
+              🌡️ TEMPERATURE
             </span>
-            <Wifi className="h-4 w-4 text-emerald-300" />
+            <Thermometer className="h-4 w-4 text-primary" />
           </div>
-          <p className="mt-2 font-mono text-lg font-semibold text-foreground">ONLINE</p>
-          <div className="mt-1.5">
-            <span className="inline-flex items-center gap-1.5 rounded border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 font-mono text-[10px] font-bold text-emerald-300">
+          <p className="mt-3 font-mono text-3xl font-extrabold tracking-tight text-foreground">
+            {shipment.reading.temperature.toFixed(1)}°C
+          </p>
+          <div className="mt-2 flex items-center justify-between text-[10px]">
+            <span className="text-muted-foreground">Safe: 18.0–29.0°C</span>
+            <span className={shipment.reading.temperature >= 29 ? 'font-bold text-amber-300' : 'text-emerald-400 font-medium'}>
+              {shipment.reading.temperature >= 35 ? 'Critical' : shipment.reading.temperature >= 29 ? 'Elevated' : 'Optimal'}
+            </span>
+          </div>
+        </Panel>
+
+        {/* Humidity Card */}
+        <Panel className="p-4 sm:p-5 transition-colors hover:border-primary/40">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold tracking-wider text-muted-foreground uppercase">
+              💧 HUMIDITY
+            </span>
+            <Droplets className="h-4 w-4 text-sky-400" />
+          </div>
+          <p className="mt-3 font-mono text-3xl font-extrabold tracking-tight text-foreground">
+            {shipment.reading.humidity}%
+          </p>
+          <div className="mt-2 flex items-center justify-between text-[10px]">
+            <span className="text-muted-foreground">Safe: 50–70% RH</span>
+            <span className={shipment.reading.humidity >= 71 ? 'font-bold text-amber-300' : 'text-emerald-400 font-medium'}>
+              {shipment.reading.humidity >= 80 ? 'Critical' : shipment.reading.humidity >= 71 ? 'Elevated' : 'Optimal'}
+            </span>
+          </div>
+        </Panel>
+
+        {/* Current Shock Card */}
+        <Panel className={`p-4 sm:p-5 transition-colors ${
+          shockInfo.level === 'critical'
+            ? 'border-red-400/40 bg-red-400/[0.05]'
+            : shockInfo.level === 'strong'
+            ? 'border-orange-400/40 bg-orange-400/[0.05]'
+            : shockInfo.level === 'moderate'
+            ? 'border-amber-400/35 bg-amber-400/[0.05]'
+            : 'hover:border-primary/40'
+        }`}>
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold tracking-wider text-muted-foreground uppercase">
+              💥 CURRENT SHOCK
+            </span>
+            <span className={`h-2 w-2 rounded-full ${shockInfo.dotClass}`} />
+          </div>
+          <p className="mt-3 font-mono text-3xl font-extrabold tracking-tight text-foreground">
+            {shockInfo.value}
+          </p>
+          <div className="mt-2 flex items-center justify-between text-[10px]">
+            <span className="font-semibold text-foreground truncate">{shockInfo.status}</span>
+            <span className="text-muted-foreground">Safe: &lt; 1.0 g</span>
+          </div>
+        </Panel>
+
+        {/* Battery Card */}
+        <Panel className="p-4 sm:p-5 transition-colors hover:border-primary/40">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold tracking-wider text-muted-foreground uppercase">
+              🔋 BATTERY
+            </span>
+            <Battery className="h-4 w-4 text-emerald-400" />
+          </div>
+          <p className="mt-3 font-mono text-3xl font-extrabold tracking-tight text-foreground">
+            {battery}%
+          </p>
+          <div className="mt-2 flex items-center justify-between text-[10px]">
+            <span className="text-muted-foreground">Continuous monitoring</span>
+            <span className="text-emerald-400 font-medium">Healthy</span>
+          </div>
+        </Panel>
+      </div>
+
+      {/* 2. Secondary Overview Row: Cargo Movement + Shipment Route + Device Status */}
+      <div className="grid gap-4 md:grid-cols-3">
+        {/* Cargo Movement */}
+        <Panel className="p-4 sm:p-5">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold tracking-wider text-muted-foreground uppercase">
+              CARGO MOVEMENT
+            </span>
+            <Activity className="h-4 w-4 text-primary" />
+          </div>
+          <div className="mt-3 flex items-center gap-2">
+            <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold ${shockInfo.badgeClass}`}>
+              <span className={`h-1.5 w-1.5 rounded-full ${shockInfo.dotClass}`} />
+              {shockInfo.rawStatus}
+            </span>
+          </div>
+          <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+            {shockInfo.description}
+          </p>
+        </Panel>
+
+        {/* Shipment Route */}
+        <Panel className="p-4 sm:p-5">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold tracking-wider text-muted-foreground uppercase">
+              SHIPMENT ROUTE
+            </span>
+            <MapPin className="h-4 w-4 text-primary" />
+          </div>
+          <p className="mt-3 text-sm font-bold text-foreground">
+            {shipment.origin.split(',')[0]} → {shipment.destination.split(',')[0]}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {shipment.origin} to {shipment.destination}
+          </p>
+          <span className="mt-2 inline-block rounded bg-secondary px-2 py-0.5 text-[9px] font-semibold text-muted-foreground">
+            Status: IN TRANSIT
+          </span>
+        </Panel>
+
+        {/* Device */}
+        <Panel className="p-4 sm:p-5">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold tracking-wider text-muted-foreground uppercase">
+              MONITORING DEVICE
+            </span>
+            <Wifi className="h-4 w-4 text-emerald-400" />
+          </div>
+          <div className="mt-3 flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2.5 py-1 text-xs font-bold text-emerald-300">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              MPU6050: CONNECTED
+              Online
+            </span>
+            <span className="text-xs text-muted-foreground">
+              · Updated {shipment.reading.updated}
             </span>
           </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Unit ID: <span className="font-mono font-medium text-foreground">{shipment.deviceId}</span>
+          </p>
           <button
             onClick={() => onDevice(shipment.deviceId)}
-            className="mt-2 flex items-center gap-1 text-[10px] text-primary hover:underline"
+            className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline"
           >
-            {shipment.deviceId} · Inspect unit <ArrowRight className="h-3 w-3" />
+            Inspect device unit <ArrowRight className="h-3 w-3" />
           </button>
-        </div>
+        </Panel>
       </div>
 
-      {/* MOTION & MOVEMENT (MPU6050) - Directly below monitoring cards */}
-      <Panel className="p-5 sm:p-6 border-primary/30 shadow-lg">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 pb-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="rounded-lg border border-primary/20 bg-primary/10 p-2 text-primary">
-                <Activity className="h-4 w-4" />
-              </span>
-              <h3 className="text-base font-bold tracking-tight text-foreground">MOTION &amp; MOVEMENT</h3>
-              <span className="inline-flex items-center gap-1 rounded border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 font-mono text-[9px] font-bold text-emerald-300">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                MPU6050: CONNECTED
-              </span>
-              <SourceBadge source={shipment.source} />
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Real-time 3-axis inertial acceleration monitoring for transit movement and shock events.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <MovementBadge
-              status={shipment.reading.movement?.status}
-              label={shipment.reading.movement?.statusLabel}
-            />
-          </div>
-        </div>
+      {/* 3. Shock / Impact History (Time -> Shock in g) */}
+      <ShockHistoryChart shipment={shipment} />
 
-        {/* Three live cards: Acceleration X, Y, Z — m/s² */}
-        <div className="mt-5 grid gap-4 sm:grid-cols-3">
-          <div className="rounded-xl border border-sky-400/25 bg-sky-400/[0.05] p-4 transition-colors hover:border-sky-400/40">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold tracking-wider text-sky-400">ACCELERATION X</span>
-              <span className="h-2 w-2 rounded-full bg-sky-400" />
-            </div>
-            <p className="mt-2 font-mono text-3xl font-extrabold text-foreground">
-              {(shipment.reading.accelerationX ?? 0).toFixed(2)}{' '}
-              <span className="text-sm font-normal text-muted-foreground">m/s²</span>
-            </p>
-            <p className="mt-1 text-[10px] text-muted-foreground">Lateral / side motion axis</p>
-          </div>
-
-          <div className="rounded-xl border border-purple-400/25 bg-purple-400/[0.05] p-4 transition-colors hover:border-purple-400/40">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold tracking-wider text-purple-400">ACCELERATION Y</span>
-              <span className="h-2 w-2 rounded-full bg-purple-400" />
-            </div>
-            <p className="mt-2 font-mono text-3xl font-extrabold text-foreground">
-              {(shipment.reading.accelerationY ?? 0).toFixed(2)}{' '}
-              <span className="text-sm font-normal text-muted-foreground">m/s²</span>
-            </p>
-            <p className="mt-1 text-[10px] text-muted-foreground">Longitudinal / front-back axis</p>
-          </div>
-
-          <div className="rounded-xl border border-amber-400/25 bg-amber-400/[0.05] p-4 transition-colors hover:border-amber-400/40">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold tracking-wider text-amber-400">ACCELERATION Z</span>
-              <span className="h-2 w-2 rounded-full bg-amber-400" />
-            </div>
-            <p className="mt-2 font-mono text-3xl font-extrabold text-foreground">
-              {(shipment.reading.accelerationZ ?? 9.81).toFixed(2)}{' '}
-              <span className="text-sm font-normal text-muted-foreground">m/s²</span>
-            </p>
-            <p className="mt-1 text-[10px] text-muted-foreground">Vertical axis (includes ~9.81 m/s² 1G baseline)</p>
-          </div>
-        </div>
-
-        {/* Movement Status sub-section */}
-        <div className="mt-5 rounded-xl border border-border/80 bg-secondary/30 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-foreground">Movement Status:</span>
-              <MovementBadge
-                status={shipment.reading.movement?.status}
-                label={shipment.reading.movement?.statusLabel}
-              />
-              <span className="font-mono text-xs text-muted-foreground">
-                (Magnitude: {(shipment.reading.movement?.magnitude ?? 9.81).toFixed(2)} m/s²)
-              </span>
-            </div>
-            <span className="rounded bg-secondary/80 px-2 py-0.5 text-[9px] text-muted-foreground">
-              Real-time threshold engine
-            </span>
-          </div>
-          <p className="mt-2 text-xs font-medium text-foreground/90">
-            {shipment.reading.movement?.description || 'Normal acceleration within steady baseline.'}
+      {/* 4. Historical Environmental Conditions Charts */}
+      <div>
+        <div className="mb-3">
+          <h3 className="text-sm font-semibold tracking-tight text-foreground">
+            Environmental Conditions History
+          </h3>
+          <p className="text-[11px] text-muted-foreground">
+            Historical temperature and humidity progression throughout transit.
           </p>
         </div>
-
-        {/* 3-Axis Motion History sub-section */}
-        <div className="mt-5">
-          <div className="mb-2 flex items-center justify-between">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">3-AXIS MOTION HISTORY</h4>
-            <span className="text-[10px] text-muted-foreground">Live telemetry (polling 2s)</span>
-          </div>
-          <MovementChart shipment={shipment} />
+        <div className="grid gap-4 lg:grid-cols-2">
+          <SensorChart shipment={shipment} kind="temperature" />
+          <SensorChart shipment={shipment} kind="humidity" />
         </div>
-      </Panel>
-
-      {/* Temperature & Humidity Monitoring History */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <SensorChart shipment={shipment} kind="temperature" />
-        <SensorChart shipment={shipment} kind="humidity" />
       </div>
 
+      {/* 5. Cargo Safety Evaluation & Simulation Control */}
       <div className="grid gap-4 xl:grid-cols-[1fr_340px]">
         <Panel className="p-5">
-          <SectionHeading title="Risk Analysis" detail="Conditions evaluated against configured shipment thresholds." />
+          <SectionHeading title="Cargo Safety Evaluation" detail="Overall status evaluated against transit threshold standards." />
           <div className="grid gap-3 sm:grid-cols-3">
             <AnalysisItem
-              label="Temperature Risk"
-              value={
-                isCritical
-                  ? 'CRITICAL'
-                  : shipment.reading.risk === 'HIGH'
-                  ? 'HIGH'
-                  : shipment.reading.risk === 'MEDIUM'
-                  ? 'ELEVATED'
-                  : 'LOW'
-              }
-              color={
-                isCritical
-                  ? 'text-red-300'
-                  : shipment.reading.risk === 'SAFE'
-                  ? 'text-emerald-300'
-                  : 'text-amber-200'
-              }
+              label="Temperature Condition"
+              value={shipment.reading.temperature >= 35 ? 'CRITICAL' : shipment.reading.temperature >= 29 ? 'WARNING' : 'SAFE'}
+              color={shipment.reading.temperature >= 35 ? 'text-red-300' : shipment.reading.temperature >= 29 ? 'text-amber-300' : 'text-emerald-300'}
             />
             <AnalysisItem
-              label="Humidity Risk"
-              value={isCritical ? 'HIGH' : shipment.reading.humidity > 70 ? 'ELEVATED' : 'LOW'}
-              color={isCritical ? 'text-orange-300' : 'text-emerald-300'}
+              label="Physical Shock Condition"
+              value={currentShock >= 3.5 ? 'STRONG SHOCK' : currentShock >= 1.5 ? 'MODERATE' : 'NORMAL'}
+              color={currentShock >= 3.5 ? 'text-orange-300' : currentShock >= 1.5 ? 'text-amber-300' : 'text-emerald-300'}
             />
             <AnalysisItem
-              label="Pipeline Source"
-              value={shipment.source === 'real' ? 'PHYSICAL ESP32' : 'SIMULATION'}
+              label="Monitoring Source"
+              value={shipment.source === 'real' ? 'PHYSICAL ESP32' : 'SIMULATED FLEET'}
               color={shipment.source === 'real' ? 'text-emerald-300' : 'text-primary'}
             />
           </div>
           <p className="mt-4 border-t border-border pt-4 text-xs leading-relaxed text-muted-foreground">
             {isCritical
-              ? 'Environmental conditions have exceeded the safe threshold range.'
+              ? 'Critical condition detected. Inspection of cargo is advised upon arrival.'
               : shipment.reading.risk === 'SAFE'
-              ? 'Environmental conditions are currently within the nominal safe range.'
-              : 'Environmental readings are approaching warning thresholds. Continue monitoring closely.'}
+              ? 'Shipment is traveling under verified optimal conditions with safe temperature, humidity, and handling.'
+              : 'Environmental or handling readings are approaching advisory limits. Continue monitoring closely.'}
           </p>
         </Panel>
         <SimulationControl
@@ -1869,6 +2277,9 @@ function ShipmentDetail({
           onSimulate={onSimulate}
         />
       </div>
+
+      {/* 6. Collapsed Technical Details Section (Section 5) */}
+      <TechnicalDetailsSection shipment={shipment} defaultOpen={false} />
     </div>
   )
 }
@@ -1994,129 +2405,110 @@ function DeviceDetail({
   shipment?: Shipment
   onShipment: (id: string) => void
 }) {
+  const currentShock = shipment?.reading.shockG ?? shipment?.reading.movement?.shockG ?? 0.2
+  const movementStatus = shipment?.reading.movementStatus ?? shipment?.reading.movement?.userStatus ?? 'Normal handling'
+  const shockInfo = getShockPresentation(currentShock, movementStatus)
+
   return (
     <div className="animate-fade-in space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <span className="font-mono text-[9px] tracking-[0.13em] text-primary">DEVICE SPECIFICATION</span>
+            <span className="font-mono text-[9px] tracking-[0.13em] text-primary">MONITORING UNIT</span>
             <SourceBadge source={device.source} />
           </div>
-          <h2 className="mt-2 text-2xl font-semibold tracking-tight">{device.id}</h2>
-          <p className="mt-1.5 text-xs text-muted-foreground">
+          <h2 className="mt-2 text-2xl font-bold tracking-tight text-foreground">{device.id}</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
             {device.source === 'real'
-              ? 'Physical hardware unit (ESP32) transmitting over Wi-Fi'
+              ? 'Physical Wanees sensor device connected via Wi-Fi'
               : 'Virtual simulated telemetry device'}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 font-mono text-[10px] font-bold tracking-wide text-emerald-300">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <CargoConditionBadge level={shipment?.reading.risk || 'SAFE'} size="md" />
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs font-bold text-emerald-300">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            MPU6050: Connected
-          </span>
-          <MovementBadge
-            status={shipment?.reading.movement?.status}
-            label={shipment?.reading.movement?.statusLabel}
-          />
-          <span className="inline-flex items-center gap-2 rounded-md border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-[10px] font-bold tracking-wide text-emerald-300">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-            ONLINE
+            Online
           </span>
         </div>
       </div>
 
-      <Panel className="p-5 sm:p-6">
-        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-5">
-          <div className="flex items-center gap-3">
-            <span className="rounded-lg border border-primary/20 bg-primary/10 p-3 text-primary">
-              <Cpu className="h-5 w-5" />
-            </span>
-            <div>
-              <p className="text-sm font-semibold">
-                {device.source === 'real' ? 'Physical ESP32 Connection Pipeline' : 'Simulated Data Adapter'}
-              </p>
-              <p className="mt-1 text-[10px] text-muted-foreground">
-                {device.source === 'real'
-                  ? 'Hardware-agnostic HTTP ingestion at /api/device/data'
-                  : 'Simulation engine generating synthetic sensor profiles'}
-              </p>
-            </div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Panel className="p-4">
+          <div className="flex items-center justify-between text-muted-foreground">
+            <span className="text-[10px] font-bold tracking-wider uppercase">CONNECTION</span>
+            <Wifi className="h-4 w-4 text-emerald-400" />
           </div>
-          <LiveDot label={device.source === 'real' ? 'ESP32 ONLINE' : 'SIMULATION ACTIVE'} />
-        </div>
+          <p className="mt-2 font-mono text-2xl font-extrabold text-foreground">Online</p>
+          <span className="mt-1 block text-[10px] text-muted-foreground">Updated {device.lastSeen}</span>
+        </Panel>
 
-        <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-          <ConditionCard
-            label="TEMPERATURE"
-            value={shipment ? `${shipment.reading.temperature.toFixed(1)}°C` : '—'}
-            icon={Thermometer}
-            foot={device.source === 'real' ? 'Real DHT22 reading' : 'Simulated reading'}
-          />
-          <ConditionCard
-            label="HUMIDITY"
-            value={shipment ? `${shipment.reading.humidity}%` : '—'}
-            icon={Globe2}
-            foot={device.source === 'real' ? 'Real DHT22 reading' : 'Simulated reading'}
-          />
-          <ConditionCard
-            label="MOTION STATUS"
-            value={shipment?.reading.movement?.statusLabel ?? 'Normal'}
-            icon={Activity}
-            foot={device.source === 'real' ? 'Real MPU6050 reading' : 'Simulated MPU6050'}
-          />
-          <ConditionCard
-            label="BATTERY LEVEL"
-            value={`${device.battery}%`}
-            icon={Activity}
-            foot="Estimated battery reserve"
-          />
-          <ConditionCard
-            label="FIRMWARE"
-            value={device.firmware}
-            icon={Command}
-            foot="Device firmware build"
-          />
-        </div>
+        <Panel className="p-4">
+          <div className="flex items-center justify-between text-muted-foreground">
+            <span className="text-[10px] font-bold tracking-wider uppercase">BATTERY</span>
+            <Battery className="h-4 w-4 text-emerald-400" />
+          </div>
+          <p className="mt-2 font-mono text-2xl font-extrabold text-foreground">{device.battery}%</p>
+          <span className="mt-1 block text-[10px] text-emerald-400">Normal reserve</span>
+        </Panel>
 
-        <div className="mt-5 grid gap-3 border-t border-border pt-5 sm:grid-cols-4">
-          <InfoLine label="LAST SEEN" value={device.lastSeen} />
-          <InfoLine
-            label="TELEMETRY PIPELINE"
-            value={device.source === 'real' ? 'POST /api/device/data (Wi-Fi)' : 'In-Memory Simulation'}
-          />
-          <InfoLine
-            label="HARDWARE SENSORS"
-            value={device.source === 'real' ? 'DHT22 + MPU6050: Connected' : 'Simulated Sensor Suite'}
-          />
-          <InfoLine label="DEVICE STATUS" value={device.status} />
-        </div>
-      </Panel>
+        <Panel className="p-4">
+          <div className="flex items-center justify-between text-muted-foreground">
+            <span className="text-[10px] font-bold tracking-wider uppercase">CARGO SHOCK</span>
+            <span className={`h-2 w-2 rounded-full ${shockInfo.dotClass}`} />
+          </div>
+          <p className="mt-2 font-mono text-2xl font-extrabold text-foreground">{shockInfo.value}</p>
+          <span className="mt-1 block text-[10px] text-muted-foreground truncate">{shockInfo.status}</span>
+        </Panel>
+
+        <Panel className="p-4">
+          <div className="flex items-center justify-between text-muted-foreground">
+            <span className="text-[10px] font-bold tracking-wider uppercase">CARGO CONDITION</span>
+            <ShieldCheck className="h-4 w-4 text-emerald-400" />
+          </div>
+          <p className="mt-2 font-mono text-2xl font-extrabold text-foreground">
+            {getCargoCondition(shipment?.reading.risk).title}
+          </p>
+          <span className="mt-1 block text-[10px] text-muted-foreground">
+            {shipment ? `${shipment.reading.temperature.toFixed(1)}°C · ${shipment.reading.humidity}% RH` : 'In transit'}
+          </span>
+        </Panel>
+      </div>
 
       <Panel className="flex flex-wrap items-center justify-between gap-4 p-5">
         <div>
-          <p className="text-[10px] font-semibold tracking-[0.1em] text-muted-foreground">ASSIGNED SHIPMENT</p>
+          <p className="text-[10px] font-bold tracking-[0.1em] text-muted-foreground uppercase">
+            ASSIGNED SHIPMENT &amp; ROUTE
+          </p>
           {shipment ? (
             <>
-              <p className="mt-2 text-sm font-semibold">
+              <p className="mt-1.5 text-sm font-bold text-foreground">
                 {shipment.id} · {shipment.cargo}
               </p>
-              <p className="mt-1 text-[10px] text-muted-foreground">
-                {shipment.origin.split(',')[0]} → {shipment.destination.split(',')[0]}
+              <p className="mt-1 text-xs text-muted-foreground">
+                {shipment.origin.split(',')[0]} → {shipment.destination.split(',')[0]} ({shipment.origin} to {shipment.destination})
               </p>
             </>
           ) : (
-            <p className="mt-2 text-sm text-muted-foreground">No shipment assigned to this device.</p>
+            <p className="mt-1.5 text-xs text-muted-foreground">No active shipment assigned.</p>
           )}
         </div>
         {shipment && (
           <button
             onClick={() => onShipment(shipment.id)}
-            className="inline-flex items-center gap-2 rounded-md bg-primary px-3.5 py-2.5 text-[10px] font-bold text-primary-foreground hover:brightness-110"
+            className="inline-flex items-center gap-2 rounded-md bg-primary px-3.5 py-2 text-xs font-bold text-primary-foreground hover:brightness-110"
           >
-            Open Shipment <ArrowRight className="h-3.5 w-3.5" />
+            Open Shipment Dashboard <ArrowRight className="h-3.5 w-3.5" />
           </button>
         )}
       </Panel>
+
+      {shipment && (
+        <>
+          <ShockHistoryChart shipment={shipment} />
+          <TechnicalDetailsSection shipment={shipment} defaultOpen={false} />
+        </>
+      )}
     </div>
   )
 }

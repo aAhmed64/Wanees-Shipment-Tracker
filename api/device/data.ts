@@ -89,9 +89,9 @@ export function computeMovementStatus(
 
   let status: MovementStatus = 'NORMAL';
   let statusLabel: 'Normal' | 'Movement detected' | 'Shock detected' = 'Normal';
-  let userStatus = 'Normal handling';
-  let shockG = 0.2;
-  let description = 'Cargo handling is steady and within normal transport limits.';
+  let userStatus: string;
+  let shockG: number;
+  let description: string;
 
   if (deviation >= MOVEMENT_THRESHOLDS.SHOCK_DEVIATION || horizMax >= MOVEMENT_THRESHOLDS.HORIZONTAL_SHOCK) {
     status = 'SHOCK_DETECTED';

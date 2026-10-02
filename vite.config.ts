@@ -238,9 +238,9 @@ function waneesApiPlugin() {
     const excessDev = Math.max(deviation, horizMax);
     let status = 'NORMAL';
     let statusLabel = 'Normal';
-    let userStatus = 'Normal handling';
-    let shockG = 0.2;
-    let description = 'Cargo handling is steady and within normal transport limits.';
+    let userStatus: string;
+    let shockG: number;
+    let description: string;
 
     if (deviation >= 6.0 || horizMax >= 5.5) {
       status = 'SHOCK_DETECTED';

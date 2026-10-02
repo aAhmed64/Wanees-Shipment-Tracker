@@ -497,7 +497,7 @@ export function mockMotionHistory(shipment: Shipment): HistoricalMotionReading[]
     { time: '10:25', x: 0.08, y: -0.01, z: 9.82, shockG: 0.2, status: 'Normal handling' },
     { time: '10:32', x: 0.12, y: -0.03, z: 9.81, shockG: 0.2, status: 'Normal handling' },
     { time: '10:37', x: 1.85, y: -1.20, z: 10.45, shockG: 1.1, status: 'Movement detected' },
-    { time: '10:41', x: 0.15, y: -0.04, z: 9.81, shockG: 0.2, status: 'Normal handling' },
+    { time: '10:41', x: 4.80, y: -2.10, z: 12.80, shockG: 4.8, status: 'Strong impact detected' },
     {
       time: 'Now',
       x: shipment.reading.accelerationX ?? 0.12,
